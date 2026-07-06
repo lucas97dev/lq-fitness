@@ -1,4 +1,5 @@
-# LQ Fitness
+[README.md](https://github.com/user-attachments/files/29719726/README.md)
+# EQ Fitness
 
 App de treino, dieta e evolução física (React + Vite).
 
@@ -12,7 +13,7 @@ npm run dev
 ```
 git init
 git add .
-git commit -m "LQ Fitness inicial"
+git commit -m "EQ Fitness inicial"
 git branch -M main
 git remote add origin https://github.com/SEU_USUARIO/lq-fitness.git
 git push -u origin main
@@ -30,6 +31,17 @@ Abra a URL da Vercel no navegador do celular (Chrome/Safari) e:
 - **iPhone (Safari)**: botão de compartilhar → "Adicionar à Tela de Início".
 
 Isso cria um ícone que abre o app em tela cheia, como um aplicativo nativo.
+
+## Login (Supabase)
+O app agora tem tela de entrar/criar conta com email e senha. O perfil (dados pessoais e metas) fica
+salvo no Supabase e sincroniza entre qualquer aparelho em que você logar com a mesma conta.
+Dieta, treinos e medidas por enquanto continuam salvos só no aparelho (localStorage).
+
+**Importante — confirmação de email:** por padrão, o Supabase exige que o usuário confirme o email
+antes de conseguir entrar (chega um link na caixa de entrada). Se quiser testar mais rápido sem esse
+passo, vá em **Authentication → Providers → Email** no painel do Supabase e desative a opção
+**"Confirm email"**. Se deixar ativado, ao criar conta é só abrir o email recebido e clicar no link
+antes de tentar entrar.
 
 ## Sobre os dados salvos
 Os dados ficam salvos no `localStorage` do navegador do próprio celular/computador.
