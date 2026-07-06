@@ -8,8 +8,9 @@ import {
   Target, User, Plus, Minus, Search, X, Flame, Trophy, Check,
   ChevronRight, ChevronLeft, Play, Pause, Square, Trash2, Edit3,
   Star, Copy, Calendar as CalendarIcon, Award, Zap, ChevronDown,
-  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft
+  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut
 } from "lucide-react";
+import { supabase } from "./supabaseClient.js";
 
 /* ============================================================
    DESIGN TOKENS
@@ -22,24 +23,24 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root{
-  --bg: #0a0e13;
-  --bg-elev: #10151d;
-  --card: #141b24;
-  --card-hover: #182029;
-  --border: #232c38;
-  --border-soft: #1b232d;
-  --text: #eef2f6;
-  --text-dim: #8b96a5;
-  --text-faint: #5c6774;
-  --accent: #3ee6a8;
-  --accent-dim: #1c8f68;
-  --accent-glow: rgba(62,230,168,0.18);
-  --blue: #4d9fff;
-  --blue-dim: rgba(77,159,255,0.16);
-  --amber: #ffb648;
-  --amber-dim: rgba(255,182,72,0.16);
-  --red: #ff6b6b;
-  --purple: #b58aff;
+  --bg: #15100d;
+  --bg-elev: #1c1611;
+  --card: #221a15;
+  --card-hover: #2a201a;
+  --border: #382a20;
+  --border-soft: #29201a;
+  --text: #f5ede3;
+  --text-dim: #ab9c8c;
+  --text-faint: #71655a;
+  --accent: #d9a94f;
+  --accent-dim: #8a6a2e;
+  --accent-glow: rgba(217,169,79,0.20);
+  --blue: #808f43;
+  --blue-dim: rgba(128,143,67,0.18);
+  --amber: #93334a;
+  --amber-dim: rgba(147,51,74,0.20);
+  --red: #b8492f;
+  --purple: #b06a78;
 }
 *{box-sizing:border-box;}
 .fitapp{
@@ -87,11 +88,14 @@ const CSS = `
 .menu-toggle:hover{border-color:#334252;}
 .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 22px 10px;}
 .brand-mark{
-  width:34px;height:34px;border-radius:10px;
-  background:linear-gradient(135deg,var(--accent),var(--blue));
+  width:40px;height:40px;border-radius:11px;
+  background:#efe6d8;
   display:flex;align-items:center;justify-content:center;
-  color:#04120c; font-weight:700;
+  overflow:hidden; flex-shrink:0;
+  border:1px solid rgba(217,169,79,0.35);
+  box-shadow:0 2px 10px rgba(0,0,0,0.25);
 }
+.brand-mark img{width:100%;height:100%;object-fit:cover;}
 .brand-name{font-family:'Space Grotesk';font-weight:700;font-size:16.5px;letter-spacing:-0.02em;}
 .brand-sub{font-size:10.5px;color:var(--text-faint);margin-top:1px;}
 
@@ -161,9 +165,11 @@ const CSS = `
   font-size:13px; font-weight:600; transition:all .15s;
 }
 .btn:hover{border-color:#334252;}
-.btn-primary{background:var(--accent); color:#04160f; border-color:var(--accent);}
-.btn-primary:hover{background:#5cf0bb;}
-.btn-blue{background:var(--blue); color:#04101f; border-color:var(--blue);}
+.btn-primary{background:var(--accent); color:#241505; border-color:var(--accent);}
+.btn-primary:hover{background:#e6bb6c;}
+.btn-blue{background:var(--blue); color:#161d08; border-color:var(--blue);}
+.btn-amber{background:var(--amber); color:#fbe9ec; border-color:var(--amber);}
+.btn-amber:hover{background:#a83c54;}
 .btn-ghost{background:transparent;border-color:transparent;color:var(--text-dim);}
 .btn-ghost:hover{background:var(--card-hover);color:var(--text);}
 .btn-danger{background:transparent;border-color:rgba(255,107,107,0.3);color:var(--red);}
@@ -217,7 +223,7 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 .chip.active{background:var(--accent-glow);border-color:var(--accent);color:var(--accent);}
 
 .timer-fab{
-  position:fixed; bottom:24px; right:24px; background:var(--accent); color:#04160f;
+  position:fixed; bottom:24px; right:24px; background:var(--accent); color:#241505;
   border-radius:50px; padding:14px 22px; font-family:'Space Grotesk'; font-weight:700; font-size:16px;
   display:flex; align-items:center; gap:10px; box-shadow:0 8px 30px rgba(62,230,168,0.35); z-index:60; border:none;
 }
@@ -225,7 +231,7 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 
 .water-glass-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:7px;margin-top:14px;}
 .water-glass{aspect-ratio:1;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-elev);}
-.water-glass.filled{background:var(--blue-dim);border-color:var(--blue);}
+.water-glass.filled{background:var(--amber-dim);border-color:var(--amber);}
 
 .pr-tag{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#0a1a12;background:linear-gradient(135deg,#ffd76b,#ffb648);padding:3px 9px;border-radius:7px;}
 
@@ -334,6 +340,36 @@ async function saveKey(key, value){
   try{ await window.storage.set(key, JSON.stringify(value), false); }catch(e){ /* noop */ }
 }
 
+/* ---- Supabase profile row <-> app profile object mapping ---- */
+function dbRowToProfile(row){
+  return {
+    name: row.name ?? "", height: row.height ?? 170, weight: row.weight ?? 70,
+    initialWeight: row.initial_weight ?? row.weight ?? 70, gender: row.gender ?? "M", age: row.age ?? 25,
+    goal: row.goal ?? "Manutenção", experience: row.experience ?? "Iniciante",
+    caloriesTarget: row.calories_target ?? 2200, proteinTarget: row.protein_target ?? 150,
+    carbTarget: row.carb_target ?? 220, fatTarget: row.fat_target ?? 60, waterTarget: row.water_target ?? 3,
+  };
+}
+function profileToDbRow(p, userId){
+  return {
+    id: userId, name: p.name, height: p.height, weight: p.weight, initial_weight: p.initialWeight,
+    gender: p.gender, age: p.age, goal: p.goal, experience: p.experience,
+    calories_target: p.caloriesTarget, protein_target: p.proteinTarget,
+    carb_target: p.carbTarget, fat_target: p.fatTarget, water_target: p.waterTarget,
+    updated_at: new Date().toISOString(),
+  };
+}
+async function loadProfileFromSupabase(userId){
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if(error){ console.error("Erro ao carregar perfil:", error.message); return null; }
+  return data ? dbRowToProfile(data) : null;
+}
+async function saveProfileToSupabase(profile, userId){
+  const row = profileToDbRow(profile, userId);
+  const { error } = await supabase.from("profiles").upsert(row);
+  if(error) console.error("Erro ao salvar perfil:", error.message);
+}
+
 /* ============================================================
    SMALL UI PRIMITIVES
 ============================================================ */
@@ -402,7 +438,7 @@ const NAV = [
 /* ============================================================
    MAIN APP
 ============================================================ */
-export default function FitnessApp(){
+export default function FitnessApp({ user }){
   const [tab, setTab] = useState("dashboard");
   const [loaded, setLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -436,8 +472,7 @@ export default function FitnessApp(){
 
   useEffect(()=>{
     (async ()=>{
-      const [p,f,d,w,fi,h,b,g] = await Promise.all([
-        loadKey("profile", null),
+      const [f,d,w,fi,h,b,g] = await Promise.all([
         loadKey("foods-custom", []),
         loadKey("diary:"+today, null),
         loadKey("water-log", {}),
@@ -446,7 +481,17 @@ export default function FitnessApp(){
         loadKey("body-measurements", null),
         loadKey("goals", null),
       ]);
-      if(p) setProfile(p);
+
+      let p = await loadProfileFromSupabase(user.id);
+      if(!p){
+        // first login: create a default profile row for this user
+        p = { name:"", height:170, weight:70, initialWeight:70, gender:"M", age:25,
+          goal:"Manutenção", experience:"Iniciante", caloriesTarget:2200, proteinTarget:150,
+          carbTarget:220, fatTarget:60, waterTarget:3 };
+        await saveProfileToSupabase(p, user.id);
+      }
+      setProfile(p);
+
       if(f && f.length) setFoods([...FOOD_DB_SEED, ...f]);
       if(d) setDiary({[today]:d});
       else setDiary({[today]: seedDiary()});
@@ -454,7 +499,7 @@ export default function FitnessApp(){
       setFichas(fi||SEED_FICHAS);
       setHistory(h||seedWorkoutHistory());
       setBodyData(b||seedBodyMeasurements());
-      setGoals(g||seedGoals(p||profile));
+      setGoals(g||seedGoals(p));
       setLoaded(true);
     })();
     // eslint-disable-next-line
@@ -484,7 +529,7 @@ export default function FitnessApp(){
   }
 
   // persist on change (after initial load)
-  useEffect(()=>{ if(loaded) saveKey("profile", profile); },[profile, loaded]);
+  useEffect(()=>{ if(loaded) saveProfileToSupabase(profile, user.id); },[profile, loaded]);
   useEffect(()=>{ if(loaded) saveKey("foods-custom", foods.filter(f=>f.custom)); },[foods, loaded]);
   useEffect(()=>{ if(loaded && diary[today]) saveKey("diary:"+today, diary[today]); },[diary, loaded]);
   useEffect(()=>{ if(loaded) saveKey("water-log", water); },[water, loaded]);
@@ -581,8 +626,8 @@ export default function FitnessApp(){
       <aside className={"sidebar"+(sidebarOpen?"":" closed")}>
         <div className="sidebar-top">
           <div className="brand" style={{padding:"6px 0 22px 0"}}>
-            <div className="brand-mark"><Dumbbell size={18}/></div>
-            <div><div className="brand-name">LQ Fitness</div><div className="brand-sub">treino · dieta · evolução</div></div>
+            <div className="brand-mark"><img src="/logo.jpg" alt="EQ Fitness"/></div>
+            <div><div className="brand-name">EQ Fitness</div><div className="brand-sub">treino · dieta · evolução</div></div>
           </div>
           <button className="collapse-btn" onClick={()=>setSidebarOpen(false)} aria-label="Recolher menu"><ChevronsLeft size={16}/></button>
         </div>
@@ -595,6 +640,10 @@ export default function FitnessApp(){
           <div className="streak-pill">
             <Flame size={18} color="var(--amber)"/>
             <div><b>{streak} dias</b><br/><span>sequência atual</span></div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,padding:"0 2px"}}>
+            <span style={{fontSize:11,color:"var(--text-faint)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:150}}>{user.email}</span>
+            <button className="iconbtn" title="Sair" onClick={()=>supabase.auth.signOut()}><LogOut size={15}/></button>
           </div>
         </div>
       </aside>
@@ -977,18 +1026,18 @@ function WaterTab({ water, setWater, today, todayWater, profile }){
         <div className="card">
           <div className="card-title">Progresso de hoje</div>
           <div style={{textAlign:"center",padding:"10px 0 4px"}}>
-            <Droplets size={38} color="var(--blue)"/>
+            <Droplets size={38} color="var(--amber)"/>
             <div style={{fontFamily:"Space Grotesk",fontSize:38,fontWeight:700,marginTop:8}}>{fmt1(todayWater)} L</div>
             <div style={{color:"var(--text-dim)",fontSize:13}}>de {profile.waterTarget} L · restam {Math.max(0,fmt1(profile.waterTarget-todayWater))} L</div>
           </div>
           <div className="pbar-track" style={{height:12,marginTop:14}}>
-            <div className="pbar-fill" style={{width:pct+"%", background:"var(--blue)"}}/>
+            <div className="pbar-fill" style={{width:pct+"%", background:"var(--amber)"}}/>
           </div>
           <div style={{display:"flex",gap:8,marginTop:18,flexWrap:"wrap"}}>
-            <button className="btn btn-blue" onClick={()=>add(200)}><Plus size={13}/> 200 ml</button>
-            <button className="btn btn-blue" onClick={()=>add(300)}><Plus size={13}/> 300 ml</button>
-            <button className="btn btn-blue" onClick={()=>add(500)}><Plus size={13}/> 500 ml</button>
-            <button className="btn btn-blue" onClick={()=>add(1000)}><Plus size={13}/> 1 L</button>
+            <button className="btn btn-amber" onClick={()=>add(200)}><Plus size={13}/> 200 ml</button>
+            <button className="btn btn-amber" onClick={()=>add(300)}><Plus size={13}/> 300 ml</button>
+            <button className="btn btn-amber" onClick={()=>add(500)}><Plus size={13}/> 500 ml</button>
+            <button className="btn btn-amber" onClick={()=>add(1000)}><Plus size={13}/> 1 L</button>
             <button className="btn btn-danger" onClick={()=>setWater(prev=>({...prev,[today]:0}))}><Trash2 size={13}/> Zerar</button>
           </div>
           <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center"}}>
@@ -1782,3 +1831,139 @@ function ProfileTab({ profile, setProfile, resetAllData }){
     </div>
   );
 }
+
+import React, { useState } from "react";
+import { supabase } from "./supabaseClient.js";
+
+export default function Auth(){
+  const [mode, setMode] = useState("login"); // login | signup
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e){
+    e.preventDefault();
+    setError(null); setMessage(null); setLoading(true);
+    try{
+      if(mode === "login"){
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if(error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if(error) throw error;
+        setMessage("Conta criada! Se a confirmação por email estiver ativa no projeto, verifique sua caixa de entrada antes de entrar.");
+      }
+    }catch(err){
+      setError(traduzErro(err.message));
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  function traduzErro(msg){
+    if(!msg) return "Algo deu errado. Tente novamente.";
+    if(msg.includes("Invalid login credentials")) return "Email ou senha incorretos.";
+    if(msg.includes("User already registered")) return "Já existe uma conta com esse email. Tente entrar.";
+    if(msg.includes("Password should be at least")) return "A senha precisa ter pelo menos 6 caracteres.";
+    if(msg.includes("Email not confirmed")) return "Confirme seu email antes de entrar (verifique sua caixa de entrada).";
+    return msg;
+  }
+
+  return (
+    <div style={S.page}>
+      <div style={S.card}>
+        <div style={S.brandRow}>
+          <div style={S.brandMark}><img src="/logo.jpg" alt="EQ Fitness" style={S.brandMarkImg}/></div>
+          <div style={S.brandName}>EQ Fitness</div>
+        </div>
+        <h2 style={S.title}>{mode === "login" ? "Entrar na sua conta" : "Criar conta"}</h2>
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom:14}}>
+            <label style={S.label}>Email</label>
+            <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} style={S.input}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={S.label}>Senha</label>
+            <input type="password" required minLength={6} value={password} onChange={e=>setPassword(e.target.value)} style={S.input}/>
+          </div>
+          {error && <div style={S.error}>{error}</div>}
+          {message && <div style={S.success}>{message}</div>}
+          <button type="submit" disabled={loading} style={{...S.button, opacity: loading ? 0.6 : 1}}>
+            {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
+          </button>
+        </form>
+        <div style={S.switchRow}>
+          {mode === "login" ? (
+            <>Ainda não tem conta?{" "}
+              <button style={S.linkBtn} onClick={()=>{ setMode("signup"); setError(null); setMessage(null); }}>Criar conta</button>
+            </>
+          ) : (
+            <>Já tem conta?{" "}
+              <button style={S.linkBtn} onClick={()=>{ setMode("login"); setError(null); setMessage(null); }}>Entrar</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  page:{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#15100d", fontFamily:"'Inter',system-ui,sans-serif", padding:16 },
+  card:{ width:"100%", maxWidth:380, background:"#221a15", border:"1px solid #382a20", borderRadius:18, padding:28 },
+  brandRow:{ display:"flex", alignItems:"center", gap:12, marginBottom:24 },
+  brandMark:{ width:44, height:44, borderRadius:12, background:"#efe6d8", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", flexShrink:0, border:"1px solid rgba(217,169,79,0.35)" },
+  brandMarkImg:{ width:"100%", height:"100%", objectFit:"cover" },
+  brandName:{ color:"#f5ede3", fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:18 },
+  title:{ color:"#f5ede3", fontSize:16, marginBottom:16 },
+  label:{ fontSize:11.5, fontWeight:700, color:"#ab9c8c", textTransform:"uppercase", letterSpacing:"0.04em", display:"block", marginBottom:6 },
+  input:{ width:"100%", background:"#1c1611", border:"1px solid #382a20", borderRadius:9, padding:"9px 12px", color:"#f5ede3", fontSize:13.5, outline:"none", boxSizing:"border-box" },
+  error:{ color:"#e0684a", fontSize:12.5, marginBottom:14 },
+  success:{ color:"#d9a94f", fontSize:12.5, marginBottom:14 },
+  button:{ width:"100%", background:"#d9a94f", color:"#241505", border:"none", borderRadius:10, padding:"10px 15px", fontWeight:700, fontSize:13.5, cursor:"pointer" },
+  switchRow:{ marginTop:16, textAlign:"center", fontSize:12.5, color:"#ab9c8c" },
+  linkBtn:{ background:"none", border:"none", color:"#c98a9c", cursor:"pointer", fontWeight:600, fontSize:12.5, padding:0 },
+};
+
+import React, { useEffect, useState } from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+import Auth from "./Auth.jsx";
+import { supabase } from "./supabaseClient.js";
+
+function Root(){
+  const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
+
+  useEffect(()=>{
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => setSession(sess));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if(session === undefined){
+    return (
+      <div style={{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#15100d", color:"#ab9c8c", fontFamily:"'Inter',system-ui,sans-serif"}}>
+        Carregando…
+      </div>
+    );
+  }
+  if(!session){
+    return <Auth/>;
+  }
+  return <App user={session.user}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <Root />
+  </React.StrictMode>
+);
+
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = "https://prkusxybbomfgxidoklr.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_QvmNb6mcWp9VAjrya33CMg_XBRwJ1nJ";
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
