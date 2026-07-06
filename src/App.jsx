@@ -12,42 +12,6 @@ import {
 } from "lucide-react";
 
 /* ============================================================
-   STORAGE SHIM
-   Outside the Claude artifact runtime there is no window.storage,
-   so this recreates the same async get/set/delete/list contract
-   on top of the browser's localStorage.
-============================================================ */
-if (typeof window !== "undefined" && !window.storage) {
-  const PREFIX = "lqfitness:";
-  const scopeKey = (shared) => PREFIX + (shared ? "shared:" : "personal:");
-  window.storage = {
-    async get(key, shared = false) {
-      const v = localStorage.getItem(scopeKey(shared) + key);
-      if (v === null) throw new Error("Key not found: " + key);
-      return { key, value: v, shared };
-    },
-    async set(key, value, shared = false) {
-      localStorage.setItem(scopeKey(shared) + key, value);
-      return { key, value, shared };
-    },
-    async delete(key, shared = false) {
-      localStorage.removeItem(scopeKey(shared) + key);
-      return { key, deleted: true, shared };
-    },
-    async list(prefix, shared = false) {
-      const p = prefix || "";
-      const scope = scopeKey(shared);
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const full = localStorage.key(i);
-        if (full && full.startsWith(scope + p)) keys.push(full.slice(scope.length));
-      }
-      return { keys, prefix: p, shared };
-    },
-  };
-}
-
-/* ============================================================
    DESIGN TOKENS
    Background: deep graphite navy. Accent A (primary/energy): teal-lime
    Accent B (hydration): electric blue. Accent C (alert/streak): amber.
@@ -465,7 +429,8 @@ export default function FitnessApp(){
   const [bodyData, setBodyData] = useState([]);
   const [goals, setGoals] = useState([]);
   const [activeSession, setActiveSession] = useState(null); // {treinoId, ficha, startedAt, log:[{exId,sets:[{weight,reps,done}]}]}
-  const [restTimer, setRestTimer] = useState(null); // {seconds, total}
+  const [restTimer, setRestTimer] = useState(null); // {endTime, total}
+  const [now, setNow] = useState(Date.now());
 
   const today = todayISO();
 
@@ -528,13 +493,22 @@ export default function FitnessApp(){
   useEffect(()=>{ if(loaded) saveKey("body-measurements", bodyData); },[bodyData, loaded]);
   useEffect(()=>{ if(loaded) saveKey("goals", goals); },[goals, loaded]);
 
-  // rest timer ticking
+  // rest timer: recompute from a fixed end timestamp, so it's correct
+  // even if the browser throttled timers while the phone was locked/backgrounded
   useEffect(()=>{
     if(!restTimer) return;
-    if(restTimer.seconds<=0) return;
-    const t = setTimeout(()=> setRestTimer(rt => rt ? {...rt, seconds: rt.seconds-1} : rt), 1000);
-    return ()=>clearTimeout(t);
+    const iv = setInterval(()=> setNow(Date.now()), 1000);
+    return ()=>clearInterval(iv);
   },[restTimer]);
+
+  useEffect(()=>{
+    function resync(){ if(document.visibilityState === "visible") setNow(Date.now()); }
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return ()=>{ document.removeEventListener("visibilitychange", resync); window.removeEventListener("focus", resync); };
+  },[]);
+
+  const restRemaining = restTimer ? Math.max(0, Math.round((restTimer.endTime - now)/1000)) : 0;
 
   const todayMeals = diary[today]?.meals || [];
   const todayWater = water[today] || 0;
@@ -638,8 +612,8 @@ export default function FitnessApp(){
 
       {restTimer && (
         <button className="timer-fab" onClick={()=>setRestTimer(null)}>
-          {restTimer.seconds>0 ? <Pause size={18}/> : <Check size={18}/>}
-          {restTimer.seconds>0 ? `${Math.floor(restTimer.seconds/60)}:${String(restTimer.seconds%60).padStart(2,"0")} descanso` : "Descanso concluído"}
+          {restRemaining>0 ? <Pause size={18}/> : <Check size={18}/>}
+          {restRemaining>0 ? `${Math.floor(restRemaining/60)}:${String(restRemaining%60).padStart(2,"0")} descanso` : "Descanso concluído"}
         </button>
       )}
     </div>
@@ -1141,12 +1115,103 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
         {!ficha.treinos.length && <div className="empty">Nenhum treino nesta ficha ainda.</div>}
       </div>
 
+      <WorkoutHistoryCard history={history} setHistory={setHistory} />
+
       {showNewFicha && <PromptModal title="Nova ficha" placeholder="Ex: Hipertrofia, Cutting..." onSave={addFicha} onClose={()=>setShowNewFicha(false)}/>}
       {showNewTreino && <PromptModal title="Novo treino" placeholder="Ex: Treino D — Ombro" onSave={addTreino} onClose={()=>setShowNewTreino(false)}/>}
       {showNewExercise && editingTreino && (
         <ExerciseForm onSave={(ex)=>addExercise(editingTreino.id, ex)} onClose={()=>{setShowNewExercise(false);setEditingTreino(null);}}/>
       )}
     </div>
+  );
+}
+
+function WorkoutHistoryCard({ history, setHistory }){
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [editing, setEditing] = useState(null); // session entry
+  const sorted = [...history].sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+
+  function requestDelete(id){
+    if(confirmDeleteId===id){
+      setHistory(prev=>prev.filter(h=>h.id!==id));
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+    }
+  }
+  function saveEdit(updated){
+    setHistory(prev=>prev.map(h=>h.id===updated.id?updated:h));
+    setEditing(null);
+  }
+
+  return (
+    <div className="card" style={{marginTop:18}}>
+      <div className="card-title">Histórico de treinos <span className="badge badge-muted">{history.length} sessões</span></div>
+      {!sorted.length && <div className="empty">Nenhum treino registrado ainda</div>}
+      {sorted.map(h=>(
+        <div className="list-row" key={h.id} style={{alignItems:"flex-start"}}>
+          <Dumbbell size={15} color="var(--text-faint)" style={{marginTop:3}}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13.5,fontWeight:600}}>{h.treinoName}</div>
+            <div style={{fontSize:11.5,color:"var(--text-faint)"}}>{new Date(h.date+"T12:00").toLocaleDateString("pt-BR")} · {h.duration} min · {Math.round(h.volume)}kg volume</div>
+            <div style={{fontSize:11,color:"var(--text-faint)",marginTop:4}}>
+              {h.exercises.map(e=>`${e.name}: ${e.sets.map(s=>`${s.weight}kg×${s.reps}`).join(", ")}`).join(" · ")}
+            </div>
+          </div>
+          <button className="iconbtn" onClick={()=>setEditing(h)}><Edit3 size={14}/></button>
+          {confirmDeleteId===h.id ? (
+            <button className="btn btn-sm btn-danger" onClick={()=>requestDelete(h.id)}>Confirmar?</button>
+          ) : (
+            <button className="iconbtn" onClick={()=>requestDelete(h.id)}><Trash2 size={14}/></button>
+          )}
+        </div>
+      ))}
+      {editing && <EditSessionModal session={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/>}
+    </div>
+  );
+}
+
+function EditSessionModal({ session, onSave, onClose }){
+  const [duration, setDuration] = useState(session.duration);
+  const [exercises, setExercises] = useState(()=> session.exercises.map(e=>({...e, sets:e.sets.map(s=>({...s}))})));
+
+  function updateSet(exIdx, setIdx, field, val){
+    setExercises(prev=> prev.map((e,i)=> i!==exIdx? e : {...e, sets: e.sets.map((s,j)=> j!==setIdx? s : {...s,[field]:val})}));
+  }
+  function removeSet(exIdx, setIdx){
+    setExercises(prev=> prev.map((e,i)=> i!==exIdx? e : {...e, sets: e.sets.filter((_,j)=>j!==setIdx)}));
+  }
+
+  function save(){
+    const volume = exercises.reduce((sum,e)=> sum + e.sets.reduce((s2,st)=> s2 + (Number(st.weight)||0)*(Number(st.reps)||0), 0), 0);
+    onSave({ ...session, duration:Number(duration), volume, exercises });
+  }
+
+  return (
+    <Modal title={`Editar sessão · ${session.treinoName}`} onClose={onClose} wide>
+      <div className="field">
+        <label className="flabel">Duração (min)</label>
+        <input className="input" type="number" value={duration} onChange={e=>setDuration(e.target.value)} style={{width:120}}/>
+      </div>
+      {exercises.map((e, exIdx)=>(
+        <div key={exIdx} style={{marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>{e.name}</div>
+          <div className="set-row" style={{color:"var(--text-faint)",fontSize:11,gridTemplateColumns:"28px 1fr 1fr 32px"}}>
+            <span></span><span>Peso (kg)</span><span>Reps</span><span></span>
+          </div>
+          {e.sets.map((s, setIdx)=>(
+            <div className="set-row" key={setIdx} style={{gridTemplateColumns:"28px 1fr 1fr 32px"}}>
+              <span className="set-num">{setIdx+1}</span>
+              <input className="input" type="number" value={s.weight} onChange={ev=>updateSet(exIdx,setIdx,"weight",Number(ev.target.value))}/>
+              <input className="input" type="number" value={s.reps} onChange={ev=>updateSet(exIdx,setIdx,"reps",Number(ev.target.value))}/>
+              <button className="iconbtn" onClick={()=>removeSet(exIdx,setIdx)}><X size={14}/></button>
+            </div>
+          ))}
+          {!e.sets.length && <div style={{fontSize:11.5,color:"var(--text-faint)"}}>Sem séries registradas</div>}
+        </div>
+      ))}
+      <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={save}>Salvar alterações</button>
+    </Modal>
   );
 }
 
@@ -1193,7 +1258,7 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
     const set = session.log[exIdx].sets[setIdx];
     if(!set.done){
       const restSec = session.treino.exercises[exIdx].rest || 60;
-      setRestTimer({seconds: restSec, total: restSec});
+      setRestTimer({endTime: Date.now() + restSec*1000, total: restSec});
     }
   }
   function updateSetField(exIdx, setIdx, field, val){
