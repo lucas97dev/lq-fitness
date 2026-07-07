@@ -324,6 +324,34 @@ async function saveProfileToSupabase(profile, userId){
   if(error) console.error("Erro ao salvar perfil:", error.message);
 }
 
+/* ---- Evolution photos: Supabase Storage + body_photos table ---- */
+const PHOTOS_BUCKET = "progress-photos";
+
+async function uploadEvolutionPhoto(file, dateStr, userId){
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${userId}/${Date.now()}-${uid()}.${ext}`;
+  const { error: upErr } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, file, { upsert:false });
+  if(upErr) throw upErr;
+  const { data, error: insErr } = await supabase.from("body_photos")
+    .insert({ user_id:userId, date:dateStr, storage_path:path }).select().single();
+  if(insErr) throw insErr;
+  return data;
+}
+async function loadEvolutionPhotos(userId){
+  const { data, error } = await supabase.from("body_photos").select("*").eq("user_id", userId).order("date", { ascending:false });
+  if(error){ console.error("Erro ao carregar fotos:", error.message); return []; }
+  const withUrls = await Promise.all((data||[]).map(async p=>{
+    const { data: signed } = await supabase.storage.from(PHOTOS_BUCKET).createSignedUrl(p.storage_path, 3600);
+    return { ...p, url: signed?.signedUrl || null };
+  }));
+  return withUrls;
+}
+async function deleteEvolutionPhoto(photo){
+  await supabase.storage.from(PHOTOS_BUCKET).remove([photo.storage_path]);
+  const { error } = await supabase.from("body_photos").delete().eq("id", photo.id);
+  if(error) throw error;
+}
+
 /* ============================================================
    SMALL UI PRIMITIVES
 ============================================================ */
@@ -595,7 +623,7 @@ export default function FitnessApp({ user }){
         {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, profile}} />}
         {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
-        {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile}} />}
+        {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
         {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
         {tab==="profile" && <ProfileTab {...{profile, setProfile, resetAllData}} />}
       </main>
@@ -1477,7 +1505,7 @@ function getWeekLabel(d){
 /* ============================================================
    BODY TAB
 ============================================================ */
-function BodyTab({ bodyData, setBodyData, profile, setProfile }){
+function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
   const [showForm, setShowForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const latest = bodyData[bodyData.length-1];
@@ -1546,10 +1574,7 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile }){
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-title">Fotos de evolução <Camera size={14}/></div>
-        <div className="empty">Upload de fotos não é suportado neste ambiente de demonstração — em produção, aqui ficaria a comparação lado a lado por data.</div>
-      </div>
+      <EvolutionPhotos user={user}/>
 
       {showForm && (
         <Modal title="Nova medição" onClose={()=>setShowForm(false)} wide>
@@ -1559,6 +1584,134 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile }){
     </div>
   );
 }
+function EvolutionPhotos({ user }){
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [selected, setSelected] = useState([]); // up to 2 photo ids for comparison
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const refresh = useCallback(async ()=>{
+    setLoading(true);
+    setPhotos(await loadEvolutionPhotos(user.id));
+    setLoading(false);
+  },[user.id]);
+
+  useEffect(()=>{ refresh(); },[refresh]);
+
+  async function handleFile(e){
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setError(null);
+    if(file.size > 8*1024*1024){ setError("Imagem muito grande (máximo 8 MB)."); e.target.value=""; return; }
+    setUploading(true);
+    try{
+      await uploadEvolutionPhoto(file, todayISO(), user.id);
+      await refresh();
+    }catch(err){
+      setError("Não foi possível enviar a foto: " + (err.message || "erro desconhecido"));
+    }
+    setUploading(false);
+    e.target.value = "";
+  }
+
+  function toggleSelect(id){
+    setSelected(prev=>{
+      if(prev.includes(id)) return prev.filter(x=>x!==id);
+      if(prev.length>=2) return [prev[1], id];
+      return [...prev, id];
+    });
+  }
+
+  async function requestDelete(photo){
+    if(confirmDeleteId === photo.id){
+      try{
+        await deleteEvolutionPhoto(photo);
+        setSelected(prev=>prev.filter(x=>x!==photo.id));
+        await refresh();
+      }catch(err){
+        setError("Não foi possível excluir a foto: " + (err.message || "erro desconhecido"));
+      }
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(photo.id);
+    }
+  }
+
+  const photoA = photos.find(p=>p.id===selected[0]);
+  const photoB = photos.find(p=>p.id===selected[1]);
+
+  return (
+    <div className="card">
+      <div className="card-title">
+        Fotos de evolução <Camera size={14}/>
+        <div style={{display:"flex",gap:8}}>
+          {selected.length===2 && (
+            <button className="btn btn-sm btn-primary" onClick={()=>setCompareOpen(true)}>Comparar selecionadas</button>
+          )}
+          <button className="btn btn-sm btn-ghost" disabled={uploading} onClick={()=>fileInputRef.current?.click()}>
+            <Plus size={13}/> {uploading ? "Enviando..." : "Adicionar foto"}
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
+        </div>
+      </div>
+
+      {error && <div style={{color:"var(--red)",fontSize:12.5,marginBottom:12}}>{error}</div>}
+
+      {loading ? (
+        <div className="empty">Carregando fotos…</div>
+      ) : !photos.length ? (
+        <div className="empty">Nenhuma foto ainda. Adicione fotos ao longo do tempo pra comparar sua evolução lado a lado.</div>
+      ) : (
+        <>
+          <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:10}}>Toque em até 2 fotos pra selecionar e comparar.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10}}>
+            {photos.map(p=>(
+              <div key={p.id} style={{position:"relative"}}>
+                <div onClick={()=>toggleSelect(p.id)} style={{
+                  aspectRatio:"3/4", borderRadius:10, overflow:"hidden", cursor:"pointer",
+                  border: selected.includes(p.id) ? "2px solid var(--accent)" : "1px solid var(--border-soft)",
+                  background:"var(--bg-elev)"
+                }}>
+                  {p.url ? <img src={p.url} alt={p.date} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
+                </div>
+                <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:4,textAlign:"center"}}>
+                  {new Date(p.date+"T12:00").toLocaleDateString("pt-BR")}
+                </div>
+                {confirmDeleteId===p.id ? (
+                  <button className="btn btn-sm btn-danger" style={{position:"absolute",top:4,right:4,padding:"3px 7px",fontSize:10.5}} onClick={()=>requestDelete(p)}>Excluir?</button>
+                ) : (
+                  <button className="iconbtn" style={{position:"absolute",top:4,right:4,background:"rgba(10,8,7,0.55)"}} onClick={(e)=>{e.stopPropagation();requestDelete(p);}}><Trash2 size={13}/></button>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {compareOpen && photoA && photoB && (
+        <Modal title="Comparação de evolução" onClose={()=>setCompareOpen(false)} wide>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {[photoA, photoB].map(p=>(
+              <div key={p.id}>
+                <div style={{borderRadius:12,overflow:"hidden",aspectRatio:"3/4",background:"var(--bg-elev)"}}>
+                  <img src={p.url} alt={p.date} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+                <div style={{textAlign:"center",fontSize:12.5,color:"var(--text-dim)",marginTop:8,fontWeight:600}}>
+                  {new Date(p.date+"T12:00").toLocaleDateString("pt-BR")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function BodyForm({ fields, onSave, defaults }){
   const [vals, setVals] = useState(()=>{
     const v = {}; fields.forEach(([k])=> v[k] = defaults?.[k] ?? 0); return v;
