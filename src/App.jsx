@@ -596,7 +596,11 @@ export default function FitnessApp({ user }){
         <div className="sidebar-top">
           <div className="brand" style={{padding:"6px 0 22px 0"}}>
             <div className="brand-mark"><img src="/logo.jpg" alt="EQ Fitness"/></div>
-            <div><div className="brand-name">EQ Fitness</div><div className="brand-sub">treino · dieta · evolução</div></div>
+            <div>
+              <div className="brand-name">EQ Fitness</div>
+              <div className="brand-sub">treino · dieta · evolução</div>
+              <div className="brand-sub" style={{color:"var(--accent)",fontWeight:600,marginTop:2}}>Elane Quezia Dias · Nutricionista</div>
+            </div>
           </div>
           <button className="collapse-btn" onClick={()=>setSidebarOpen(false)} aria-label="Recolher menu"><ChevronsLeft size={16}/></button>
         </div>
@@ -613,6 +617,9 @@ export default function FitnessApp({ user }){
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,padding:"0 2px"}}>
             <span style={{fontSize:11,color:"var(--text-faint)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:150}}>{user.email}</span>
             <button className="iconbtn" title="Sair" onClick={()=>supabase.auth.signOut()}><LogOut size={15}/></button>
+          </div>
+          <div style={{textAlign:"center",fontSize:10,color:"var(--text-faint)",marginTop:12,paddingTop:10,borderTop:"1px solid var(--border-soft)"}}>
+            Feito por Lucas Morais
           </div>
         </div>
       </aside>
