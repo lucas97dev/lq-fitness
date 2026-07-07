@@ -8,9 +8,10 @@ import {
   Target, User, Plus, Minus, Search, X, Flame, Trophy, Check,
   ChevronRight, ChevronLeft, Play, Pause, Square, Trash2, Edit3,
   Star, Copy, Calendar as CalendarIcon, Award, Zap, ChevronDown,
-  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut
+  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft
 } from "lucide-react";
-import { supabase } from "./supabaseClient.js";
+
+const LOGO_DATA_URI = "data:image/jpeg;base64,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";
 
 /* ============================================================
    DESIGN TOKENS
@@ -340,36 +341,6 @@ async function saveKey(key, value){
   try{ await window.storage.set(key, JSON.stringify(value), false); }catch(e){ /* noop */ }
 }
 
-/* ---- Supabase profile row <-> app profile object mapping ---- */
-function dbRowToProfile(row){
-  return {
-    name: row.name ?? "", height: row.height ?? 170, weight: row.weight ?? 70,
-    initialWeight: row.initial_weight ?? row.weight ?? 70, gender: row.gender ?? "M", age: row.age ?? 25,
-    goal: row.goal ?? "Manutenção", experience: row.experience ?? "Iniciante",
-    caloriesTarget: row.calories_target ?? 2200, proteinTarget: row.protein_target ?? 150,
-    carbTarget: row.carb_target ?? 220, fatTarget: row.fat_target ?? 60, waterTarget: row.water_target ?? 3,
-  };
-}
-function profileToDbRow(p, userId){
-  return {
-    id: userId, name: p.name, height: p.height, weight: p.weight, initial_weight: p.initialWeight,
-    gender: p.gender, age: p.age, goal: p.goal, experience: p.experience,
-    calories_target: p.caloriesTarget, protein_target: p.proteinTarget,
-    carb_target: p.carbTarget, fat_target: p.fatTarget, water_target: p.waterTarget,
-    updated_at: new Date().toISOString(),
-  };
-}
-async function loadProfileFromSupabase(userId){
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
-  if(error){ console.error("Erro ao carregar perfil:", error.message); return null; }
-  return data ? dbRowToProfile(data) : null;
-}
-async function saveProfileToSupabase(profile, userId){
-  const row = profileToDbRow(profile, userId);
-  const { error } = await supabase.from("profiles").upsert(row);
-  if(error) console.error("Erro ao salvar perfil:", error.message);
-}
-
 /* ============================================================
    SMALL UI PRIMITIVES
 ============================================================ */
@@ -438,7 +409,7 @@ const NAV = [
 /* ============================================================
    MAIN APP
 ============================================================ */
-export default function FitnessApp({ user }){
+export default function FitnessApp(){
   const [tab, setTab] = useState("dashboard");
   const [loaded, setLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -472,7 +443,8 @@ export default function FitnessApp({ user }){
 
   useEffect(()=>{
     (async ()=>{
-      const [f,d,w,fi,h,b,g] = await Promise.all([
+      const [p,f,d,w,fi,h,b,g] = await Promise.all([
+        loadKey("profile", null),
         loadKey("foods-custom", []),
         loadKey("diary:"+today, null),
         loadKey("water-log", {}),
@@ -481,25 +453,15 @@ export default function FitnessApp({ user }){
         loadKey("body-measurements", null),
         loadKey("goals", null),
       ]);
-
-      let p = await loadProfileFromSupabase(user.id);
-      if(!p){
-        // first login: create a default profile row for this user
-        p = { name:"", height:170, weight:70, initialWeight:70, gender:"M", age:25,
-          goal:"Manutenção", experience:"Iniciante", caloriesTarget:2200, proteinTarget:150,
-          carbTarget:220, fatTarget:60, waterTarget:3 };
-        await saveProfileToSupabase(p, user.id);
-      }
-      setProfile(p);
-
+      if(p) setProfile(p);
       if(f && f.length) setFoods([...FOOD_DB_SEED, ...f]);
       if(d) setDiary({[today]:d});
       else setDiary({[today]: seedDiary()});
       setWater(w||{});
       setFichas(fi||SEED_FICHAS);
-      setHistory(h||seedWorkoutHistory());
-      setBodyData(b||seedBodyMeasurements());
-      setGoals(g||seedGoals(p));
+      setHistory(h||[]);
+      setBodyData(b||[]);
+      setGoals(g||[]);
       setLoaded(true);
     })();
     // eslint-disable-next-line
@@ -507,15 +469,9 @@ export default function FitnessApp({ user }){
 
   function seedDiary(){
     return { meals:[
-      { id:uid(), name:"Café da manhã", items:[
-        {id:uid(), foodId:"f7", qty:60},{id:uid(), foodId:"f6", qty:1},{id:uid(), foodId:"f8", qty:1}
-      ]},
-      { id:uid(), name:"Almoço", items:[
-        {id:uid(), foodId:"f3", qty:180},{id:uid(), foodId:"f1", qty:150},{id:uid(), foodId:"f2", qty:100}
-      ]},
-      { id:uid(), name:"Lanche da tarde", items:[
-        {id:uid(), foodId:"f12", qty:170},{id:uid(), foodId:"f21", qty:1}
-      ]},
+      { id:uid(), name:"Café da manhã", items:[] },
+      { id:uid(), name:"Almoço", items:[] },
+      { id:uid(), name:"Lanche da tarde", items:[] },
       { id:uid(), name:"Jantar", items:[] },
     ]};
   }
@@ -529,7 +485,7 @@ export default function FitnessApp({ user }){
   }
 
   // persist on change (after initial load)
-  useEffect(()=>{ if(loaded) saveProfileToSupabase(profile, user.id); },[profile, loaded]);
+  useEffect(()=>{ if(loaded) saveKey("profile", profile); },[profile, loaded]);
   useEffect(()=>{ if(loaded) saveKey("foods-custom", foods.filter(f=>f.custom)); },[foods, loaded]);
   useEffect(()=>{ if(loaded && diary[today]) saveKey("diary:"+today, diary[today]); },[diary, loaded]);
   useEffect(()=>{ if(loaded) saveKey("water-log", water); },[water, loaded]);
@@ -626,7 +582,7 @@ export default function FitnessApp({ user }){
       <aside className={"sidebar"+(sidebarOpen?"":" closed")}>
         <div className="sidebar-top">
           <div className="brand" style={{padding:"6px 0 22px 0"}}>
-            <div className="brand-mark"><img src="/logo.jpg" alt="EQ Fitness"/></div>
+            <div className="brand-mark"><img src={LOGO_DATA_URI} alt="EQ Fitness"/></div>
             <div><div className="brand-name">EQ Fitness</div><div className="brand-sub">treino · dieta · evolução</div></div>
           </div>
           <button className="collapse-btn" onClick={()=>setSidebarOpen(false)} aria-label="Recolher menu"><ChevronsLeft size={16}/></button>
@@ -640,10 +596,6 @@ export default function FitnessApp({ user }){
           <div className="streak-pill">
             <Flame size={18} color="var(--amber)"/>
             <div><b>{streak} dias</b><br/><span>sequência atual</span></div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,padding:"0 2px"}}>
-            <span style={{fontSize:11,color:"var(--text-faint)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:150}}>{user.email}</span>
-            <button className="iconbtn" title="Sair" onClick={()=>supabase.auth.signOut()}><LogOut size={15}/></button>
           </div>
         </div>
       </aside>
