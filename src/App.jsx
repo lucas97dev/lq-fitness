@@ -313,6 +313,12 @@ function calcLeanMass(weightKg, bodyFatPct){
   if(!weightKg || bodyFatPct==null) return null;
   return fmt1(weightKg * (1 - bodyFatPct/100));
 }
+// averages left/right skinfold sides when both are filled; falls back to whichever side has a value
+function sideAvg(r, l){
+  const rn = Number(r)||0, ln = Number(l)||0;
+  if(rn && ln) return (rn+ln)/2;
+  return rn || ln || 0;
+}
 
 /* ============================================================
    STORAGE HELPERS
@@ -1785,6 +1791,15 @@ function EvolutionPhotos({ user }){
   );
 }
 
+function NumField({ label, value, onChange }){
+  return (
+    <div className="field">
+      <label className="flabel">{label}</label>
+      <input className="input" type="number" step="0.1" value={value} onChange={e=>onChange(Number(e.target.value))}/>
+    </div>
+  );
+}
+
 function BodyForm({ onSave, defaults, profile }){
   const [vals, setVals] = useState(()=>({
     weight: defaults?.weight ?? profile.weight ?? 0,
@@ -1793,19 +1808,22 @@ function BodyForm({ onSave, defaults, profile }){
     armR: defaults?.armR ?? 0, armL: defaults?.armL ?? 0,
     calfR: defaults?.calfR ?? 0, calfL: defaults?.calfL ?? 0,
     thighR: defaults?.thighR ?? 0, thighL: defaults?.thighL ?? 0,
-    sfTriceps: defaults?.sfTriceps ?? 0, sfBiceps: defaults?.sfBiceps ?? 0,
+    sfTricepsR: defaults?.sfTricepsR ?? 0, sfTricepsL: defaults?.sfTricepsL ?? 0,
+    sfBicepsR: defaults?.sfBicepsR ?? 0, sfBicepsL: defaults?.sfBicepsL ?? 0,
     sfSubscapular: defaults?.sfSubscapular ?? 0, sfSuprailiac: defaults?.sfSuprailiac ?? 0,
     sfAbdominal: defaults?.sfAbdominal ?? 0, sfChest: defaults?.sfChest ?? 0,
-    sfMidaxillary: defaults?.sfMidaxillary ?? 0, sfThigh: defaults?.sfThigh ?? 0,
-    sfCalf: defaults?.sfCalf ?? 0,
+    sfMidaxillary: defaults?.sfMidaxillary ?? 0,
+    sfThighR: defaults?.sfThighR ?? 0, sfThighL: defaults?.sfThighL ?? 0,
+    sfCalfR: defaults?.sfCalfR ?? 0, sfCalfL: defaults?.sfCalfL ?? 0,
   }));
 
   function set(k,v){ setVals(prev=>({...prev,[k]:v})); }
 
   const skinfoldsForCalc = {
-    triceps: vals.sfTriceps, biceps: vals.sfBiceps, subscapular: vals.sfSubscapular,
-    suprailiac: vals.sfSuprailiac, abdominal: vals.sfAbdominal, chest: vals.sfChest,
-    midaxillary: vals.sfMidaxillary, thigh: vals.sfThigh, calf: vals.sfCalf,
+    triceps: sideAvg(vals.sfTricepsR, vals.sfTricepsL), biceps: sideAvg(vals.sfBicepsR, vals.sfBicepsL),
+    subscapular: vals.sfSubscapular, suprailiac: vals.sfSuprailiac, abdominal: vals.sfAbdominal,
+    chest: vals.sfChest, midaxillary: vals.sfMidaxillary,
+    thigh: sideAvg(vals.sfThighR, vals.sfThighL), calf: sideAvg(vals.sfCalfR, vals.sfCalfL),
   };
 
   const preview = useMemo(()=>{
@@ -1831,47 +1849,48 @@ function BodyForm({ onSave, defaults, profile }){
     });
   }
 
-  const NumField = ({k,label}) => (
-    <div className="field">
-      <label className="flabel">{label}</label>
-      <input className="input" type="number" step="0.1" value={vals[k]} onChange={e=>set(k, Number(e.target.value))}/>
-    </div>
-  );
-
   return (
     <div>
       <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Peso e estatura</div>
       <div className="grid grid-2" style={{marginBottom:18}}>
-        <NumField k="weight" label="Peso corporal (kg)"/>
-        <NumField k="height" label="Altura / estatura (cm)"/>
+        <NumField label="Peso corporal (kg)" value={vals.weight} onChange={v=>set('weight',v)}/>
+        <NumField label="Altura / estatura (cm)" value={vals.height} onChange={v=>set('height',v)}/>
       </div>
 
       <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Circunferências (cm)</div>
       <div className="grid grid-3" style={{marginBottom:18}}>
-        <NumField k="waist" label="Cintura (CC)"/>
-        <NumField k="hip" label="Quadril (CQ)"/>
+        <NumField label="Cintura (CC)" value={vals.waist} onChange={v=>set('waist',v)}/>
+        <NumField label="Quadril (CQ)" value={vals.hip} onChange={v=>set('hip',v)}/>
         <div/>
-        <NumField k="armR" label="Braço direito (CB)"/>
-        <NumField k="armL" label="Braço esquerdo (CB)"/>
+        <NumField label="Braço direito (CB)" value={vals.armR} onChange={v=>set('armR',v)}/>
+        <NumField label="Braço esquerdo (CB)" value={vals.armL} onChange={v=>set('armL',v)}/>
         <div/>
-        <NumField k="calfR" label="Panturrilha direita (CP)"/>
-        <NumField k="calfL" label="Panturrilha esquerda (CP)"/>
+        <NumField label="Panturrilha direita (CP)" value={vals.calfR} onChange={v=>set('calfR',v)}/>
+        <NumField label="Panturrilha esquerda (CP)" value={vals.calfL} onChange={v=>set('calfL',v)}/>
         <div/>
-        <NumField k="thighR" label="Coxa direita (CCx)"/>
-        <NumField k="thighL" label="Coxa esquerda (CCx)"/>
+        <NumField label="Coxa direita (CCx)" value={vals.thighR} onChange={v=>set('thighR',v)}/>
+        <NumField label="Coxa esquerda (CCx)" value={vals.thighL} onChange={v=>set('thighL',v)}/>
       </div>
 
       <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Dobras cutâneas (mm)</div>
       <div className="grid grid-3" style={{marginBottom:18}}>
-        <NumField k="sfTriceps" label="Tricipital (DCT)"/>
-        <NumField k="sfBiceps" label="Bicipital (DCB)"/>
-        <NumField k="sfSubscapular" label="Subescapular (DCSE)"/>
-        <NumField k="sfSuprailiac" label="Supra-ilíaca (DCSI)"/>
-        <NumField k="sfAbdominal" label="Abdominal (DCA)"/>
-        <NumField k="sfChest" label="Peitoral (DCP)"/>
-        <NumField k="sfMidaxillary" label="Axilar média (DCAM)"/>
-        <NumField k="sfThigh" label="Coxa (DCC)"/>
-        <NumField k="sfCalf" label="Panturrilha medial (DCPM)"/>
+        <NumField label="Tricipital direita (DCT)" value={vals.sfTricepsR} onChange={v=>set('sfTricepsR',v)}/>
+        <NumField label="Tricipital esquerda (DCT)" value={vals.sfTricepsL} onChange={v=>set('sfTricepsL',v)}/>
+        <div/>
+        <NumField label="Bicipital direita (DCB)" value={vals.sfBicepsR} onChange={v=>set('sfBicepsR',v)}/>
+        <NumField label="Bicipital esquerda (DCB)" value={vals.sfBicepsL} onChange={v=>set('sfBicepsL',v)}/>
+        <div/>
+        <NumField label="Subescapular (DCSE)" value={vals.sfSubscapular} onChange={v=>set('sfSubscapular',v)}/>
+        <NumField label="Supra-ilíaca (DCSI)" value={vals.sfSuprailiac} onChange={v=>set('sfSuprailiac',v)}/>
+        <NumField label="Abdominal (DCA)" value={vals.sfAbdominal} onChange={v=>set('sfAbdominal',v)}/>
+        <NumField label="Peitoral (DCP)" value={vals.sfChest} onChange={v=>set('sfChest',v)}/>
+        <NumField label="Axilar média (DCAM)" value={vals.sfMidaxillary} onChange={v=>set('sfMidaxillary',v)}/>
+        <div/>
+        <NumField label="Coxa direita (DCC)" value={vals.sfThighR} onChange={v=>set('sfThighR',v)}/>
+        <NumField label="Coxa esquerda (DCC)" value={vals.sfThighL} onChange={v=>set('sfThighL',v)}/>
+        <div/>
+        <NumField label="Panturrilha medial direita (DCPM)" value={vals.sfCalfR} onChange={v=>set('sfCalfR',v)}/>
+        <NumField label="Panturrilha medial esquerda (DCPM)" value={vals.sfCalfL} onChange={v=>set('sfCalfL',v)}/>
       </div>
 
       <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Índices derivados (calculado automaticamente)</div>
