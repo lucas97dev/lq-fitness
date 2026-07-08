@@ -283,15 +283,25 @@ const uid = () => Math.random().toString(36).slice(2,10);
 
 /* ============================================================
    STORAGE HELPERS
+   Every user's app data (diary, water, fichas, workout history,
+   body measurements, goals, custom foods) is stored as one row
+   per key in the "user_data" table in Supabase — real persistence,
+   synced across any device the user logs into.
 ============================================================ */
-async function loadKey(key, fallback){
+async function loadKey(userId, key, fallback){
   try{
-    const r = await window.storage.get(key, false);
-    return r ? JSON.parse(r.value) : fallback;
+    const { data, error } = await supabase.from("user_data").select("value").eq("user_id", userId).eq("key", key).maybeSingle();
+    if(error || !data) return fallback;
+    return data.value;
   }catch(e){ return fallback; }
 }
-async function saveKey(key, value){
-  try{ await window.storage.set(key, JSON.stringify(value), false); }catch(e){ /* noop */ }
+async function saveKey(userId, key, value){
+  try{
+    await supabase.from("user_data").upsert({ user_id:userId, key, value, updated_at:new Date().toISOString() });
+  }catch(e){ console.error("Erro ao salvar", key, e); }
+}
+async function deleteAllUserData(userId){
+  try{ await supabase.from("user_data").delete().eq("user_id", userId); }catch(e){ /* noop */ }
 }
 
 /* ---- Supabase profile row <-> app profile object mapping ---- */
@@ -455,13 +465,13 @@ export default function FitnessApp({ user }){
   useEffect(()=>{
     (async ()=>{
       const [f,d,w,fi,h,b,g] = await Promise.all([
-        loadKey("foods-custom", []),
-        loadKey("diary:"+today, null),
-        loadKey("water-log", {}),
-        loadKey("fichas", null),
-        loadKey("workout-history", null),
-        loadKey("body-measurements", null),
-        loadKey("goals", null),
+        loadKey(user.id, "foods-custom", []),
+        loadKey(user.id, "diary:"+today, null),
+        loadKey(user.id, "water-log", {}),
+        loadKey(user.id, "fichas", null),
+        loadKey(user.id, "workout-history", null),
+        loadKey(user.id, "body-measurements", null),
+        loadKey(user.id, "goals", null),
       ]);
 
       let p = await loadProfileFromSupabase(user.id);
@@ -499,13 +509,13 @@ export default function FitnessApp({ user }){
 
   // persist on change (after initial load)
   useEffect(()=>{ if(loaded) saveProfileToSupabase(profile, user.id); },[profile, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("foods-custom", foods.filter(f=>f.custom)); },[foods, loaded]);
-  useEffect(()=>{ if(loaded && diary[today]) saveKey("diary:"+today, diary[today]); },[diary, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("water-log", water); },[water, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("fichas", fichas); },[fichas, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("workout-history", history); },[history, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("body-measurements", bodyData); },[bodyData, loaded]);
-  useEffect(()=>{ if(loaded) saveKey("goals", goals); },[goals, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "foods-custom", foods.filter(f=>f.custom)); },[foods, loaded]);
+  useEffect(()=>{ if(loaded && diary[today]) saveKey(user.id, "diary:"+today, diary[today]); },[diary, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "water-log", water); },[water, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "fichas", fichas); },[fichas, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "workout-history", history); },[history, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "body-measurements", bodyData); },[bodyData, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "goals", goals); },[goals, loaded]);
 
   // rest timer: recompute from a fixed end timestamp, so it's correct
   // even if the browser throttled timers while the phone was locked/backgrounded
@@ -550,11 +560,7 @@ export default function FitnessApp({ user }){
   const latestWeight = bodyData.length ? bodyData[bodyData.length-1].weight : profile.weight;
 
   async function resetAllData(){
-    try{
-      const listResult = await window.storage.list(undefined, false);
-      const keys = listResult?.keys || [];
-      await Promise.all(keys.map(k => window.storage.delete(k, false)));
-    }catch(e){ /* noop */ }
+    await deleteAllUserData(user.id);
     setProfile({
       name:"", height:170, weight:70, initialWeight:70, gender:"M", age:25,
       goal:"Manutenção", experience:"Iniciante",
