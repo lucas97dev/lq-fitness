@@ -281,6 +281,39 @@ const daysAgoISO = (n) => { const d=new Date(); d.setDate(d.getDate()-n); return
 const fmt1 = (n) => Math.round(n*10)/10;
 const uid = () => Math.random().toString(36).slice(2,10);
 
+/* ---- Body composition calculations ---- */
+function calcBMI(weightKg, heightCm){
+  const h = (heightCm||0)/100;
+  if(!h) return 0;
+  return fmt1(weightKg / (h*h));
+}
+// Jackson & Pollock — 7 dobras (mm): peitoral, axilar média, tricipital, subescapular, abdominal, supra-ilíaca, coxa
+function calcJP7(sf, age, gender){
+  const sum = ["chest","midaxillary","triceps","subscapular","abdominal","suprailiac","thigh"]
+    .reduce((s,k)=> s + (Number(sf[k])||0), 0);
+  if(!sum || !age) return null;
+  const bd = gender === "F"
+    ? 1.097 - 0.00046971*sum + 0.00000056*sum*sum - 0.00012828*age
+    : 1.112 - 0.00043499*sum + 0.00000055*sum*sum - 0.00028826*age;
+  const pct = (495/bd) - 450;
+  return { sum:fmt1(sum), pct: fmt1(pct) };
+}
+// Jackson & Pollock — 3 dobras: homens (peitoral, abdominal, coxa) · mulheres (tricipital, supra-ilíaca, coxa)
+function calcJP3(sf, age, gender){
+  const sites = gender === "F" ? ["triceps","suprailiac","thigh"] : ["chest","abdominal","thigh"];
+  const sum = sites.reduce((s,k)=> s + (Number(sf[k])||0), 0);
+  if(!sum || !age) return null;
+  const bd = gender === "F"
+    ? 1.0994921 - 0.0009929*sum + 0.0000023*sum*sum - 0.0001392*age
+    : 1.10938 - 0.0008267*sum + 0.0000016*sum*sum - 0.0002574*age;
+  const pct = (495/bd) - 450;
+  return { sum:fmt1(sum), pct: fmt1(pct) };
+}
+function calcLeanMass(weightKg, bodyFatPct){
+  if(!weightKg || bodyFatPct==null) return null;
+  return fmt1(weightKg * (1 - bodyFatPct/100));
+}
+
 /* ============================================================
    STORAGE HELPERS
    Every user's app data (diary, water, fichas, workout history,
@@ -1396,7 +1429,7 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
   const [exName, setExName] = useState(allExercises[0]);
 
   const weightSeries = bodyData.map(b=>({date:b.date.slice(5), value:b.weight}));
-  const bfSeries = bodyData.map(b=>({date:b.date.slice(5), value:b.bodyFat}));
+  const bfSeries = bodyData.filter(b=>b.bodyFatJP7!=null).map(b=>({date:b.date.slice(5), value:b.bodyFatJP7}));
   const volumeByWeek = useMemo(()=>{
     const weeks = {};
     history.forEach(h=>{
@@ -1564,15 +1597,9 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
 
   function addEntry(entry){
     setBodyData(prev=>[...prev, {...entry, id:uid(), date:todayISO()}]);
-    if(entry.weight) setProfile(p=>({...p, weight:entry.weight}));
+    if(entry.weight) setProfile(p=>({...p, weight:entry.weight, height:entry.height||p.height}));
     setShowForm(false);
   }
-
-  const fields = [
-    ["weight","Peso (kg)"],["chest","Peitoral (cm)"],["armL","Braço esq. (cm)"],["armR","Braço dir. (cm)"],
-    ["forearm","Antebraço (cm)"],["waist","Cintura (cm)"],["abdomen","Abdômen (cm)"],["hip","Quadril (cm)"],
-    ["thighL","Coxa esq. (cm)"],["thighR","Coxa dir. (cm)"],["calfL","Panturrilha esq. (cm)"],["calfR","Panturrilha dir. (cm)"],["bodyFat","% Gordura"]
-  ];
 
   return (
     <div>
@@ -1580,9 +1607,10 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
 
       {latest && (
         <div className="grid grid-4" style={{marginBottom:18}}>
-          {fields.slice(0,4).map(([k,label])=>(
-            <div className="card stat-card" key={k}><span className="stat-label">{label}</span><span className="stat-value">{latest[k]}</span></div>
-          ))}
+          <div className="card stat-card"><span className="stat-label">Peso</span><span className="stat-value">{latest.weight} kg</span></div>
+          <div className="card stat-card"><span className="stat-label">IMC</span><span className="stat-value">{latest.bmi ?? "—"}</span></div>
+          <div className="card stat-card"><span className="stat-label">% Gordura (JP7)</span><span className="stat-value">{latest.bodyFatJP7 != null ? latest.bodyFatJP7+"%" : "—"}</span></div>
+          <div className="card stat-card"><span className="stat-label">Massa magra (JP7)</span><span className="stat-value">{latest.leanMassJP7 != null ? latest.leanMassJP7+" kg" : "—"}</span></div>
         </div>
       )}
 
@@ -1591,18 +1619,19 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12.5}}>
             <thead><tr style={{color:"var(--text-faint)",textAlign:"left"}}>
-              {["Data","Peso","Peito","Cintura","Quadril","Coxa E","% Gordura",""].map(h=><th key={h} style={{padding:"6px 10px",fontWeight:600}}>{h}</th>)}
+              {["Data","Peso","IMC","Cintura","Quadril","% G. (JP7)","% G. (JP3)","Massa magra",""].map(h=><th key={h} style={{padding:"6px 10px",fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}
             </tr></thead>
             <tbody>
               {[...bodyData].reverse().slice(0,12).map(b=>(
                 <tr key={b.id} style={{borderTop:"1px solid var(--border-soft)"}}>
                   <td style={{padding:"8px 10px"}}>{new Date(b.date+"T12:00").toLocaleDateString("pt-BR")}</td>
                   <td style={{padding:"8px 10px"}}>{b.weight}kg</td>
-                  <td style={{padding:"8px 10px"}}>{b.chest}cm</td>
-                  <td style={{padding:"8px 10px"}}>{b.waist}cm</td>
-                  <td style={{padding:"8px 10px"}}>{b.hip}cm</td>
-                  <td style={{padding:"8px 10px"}}>{b.thighL}cm</td>
-                  <td style={{padding:"8px 10px"}}>{b.bodyFat}%</td>
+                  <td style={{padding:"8px 10px"}}>{b.bmi ?? "—"}</td>
+                  <td style={{padding:"8px 10px"}}>{b.waist ?? "—"}cm</td>
+                  <td style={{padding:"8px 10px"}}>{b.hip ?? "—"}cm</td>
+                  <td style={{padding:"8px 10px"}}>{b.bodyFatJP7 != null ? b.bodyFatJP7+"%" : "—"}</td>
+                  <td style={{padding:"8px 10px"}}>{b.bodyFatJP3 != null ? b.bodyFatJP3+"%" : "—"}</td>
+                  <td style={{padding:"8px 10px"}}>{b.leanMassJP7 != null ? b.leanMassJP7+"kg" : "—"}</td>
                   <td style={{padding:"8px 10px"}}>
                     {confirmDeleteId===b.id ? (
                       <button className="btn btn-sm btn-danger" style={{padding:"4px 9px"}} onClick={()=>requestDelete(b.id)}>Confirmar?</button>
@@ -1612,6 +1641,7 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
                   </td>
                 </tr>
               ))}
+              {!bodyData.length && <tr><td colSpan={9} style={{padding:"16px 10px"}}><div className="empty">Nenhuma medição registrada ainda</div></td></tr>}
             </tbody>
           </table>
         </div>
@@ -1621,7 +1651,7 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
 
       {showForm && (
         <Modal title="Nova medição" onClose={()=>setShowForm(false)} wide>
-          <BodyForm fields={fields} onSave={addEntry} defaults={latest}/>
+          <BodyForm onSave={addEntry} defaults={latest} profile={profile}/>
         </Modal>
       )}
     </div>
@@ -1755,21 +1785,107 @@ function EvolutionPhotos({ user }){
   );
 }
 
-function BodyForm({ fields, onSave, defaults }){
-  const [vals, setVals] = useState(()=>{
-    const v = {}; fields.forEach(([k])=> v[k] = defaults?.[k] ?? 0); return v;
-  });
+function BodyForm({ onSave, defaults, profile }){
+  const [vals, setVals] = useState(()=>({
+    weight: defaults?.weight ?? profile.weight ?? 0,
+    height: defaults?.height ?? profile.height ?? 0,
+    waist: defaults?.waist ?? 0, hip: defaults?.hip ?? 0,
+    armR: defaults?.armR ?? 0, armL: defaults?.armL ?? 0,
+    calfR: defaults?.calfR ?? 0, calfL: defaults?.calfL ?? 0,
+    thighR: defaults?.thighR ?? 0, thighL: defaults?.thighL ?? 0,
+    sfTriceps: defaults?.sfTriceps ?? 0, sfBiceps: defaults?.sfBiceps ?? 0,
+    sfSubscapular: defaults?.sfSubscapular ?? 0, sfSuprailiac: defaults?.sfSuprailiac ?? 0,
+    sfAbdominal: defaults?.sfAbdominal ?? 0, sfChest: defaults?.sfChest ?? 0,
+    sfMidaxillary: defaults?.sfMidaxillary ?? 0, sfThigh: defaults?.sfThigh ?? 0,
+    sfCalf: defaults?.sfCalf ?? 0,
+  }));
+
+  function set(k,v){ setVals(prev=>({...prev,[k]:v})); }
+
+  const skinfoldsForCalc = {
+    triceps: vals.sfTriceps, biceps: vals.sfBiceps, subscapular: vals.sfSubscapular,
+    suprailiac: vals.sfSuprailiac, abdominal: vals.sfAbdominal, chest: vals.sfChest,
+    midaxillary: vals.sfMidaxillary, thigh: vals.sfThigh, calf: vals.sfCalf,
+  };
+
+  const preview = useMemo(()=>{
+    const bmi = calcBMI(vals.weight, vals.height);
+    const jp7 = calcJP7(skinfoldsForCalc, profile.age, profile.gender);
+    const jp3 = calcJP3(skinfoldsForCalc, profile.age, profile.gender);
+    const leanJP7 = jp7 ? calcLeanMass(vals.weight, jp7.pct) : null;
+    const leanJP3 = jp3 ? calcLeanMass(vals.weight, jp3.pct) : null;
+    return { bmi, jp7, jp3, leanJP7, leanJP3 };
+    // eslint-disable-next-line
+  },[vals, profile.age, profile.gender]);
+
+  function handleSave(){
+    onSave({
+      ...vals,
+      bmi: preview.bmi || null,
+      bodyFatJP7: preview.jp7 ? preview.jp7.pct : null,
+      bodyFatJP3: preview.jp3 ? preview.jp3.pct : null,
+      leanMassJP7: preview.leanJP7,
+      leanMassJP3: preview.leanJP3,
+      sfSumJP7: preview.jp7 ? preview.jp7.sum : null,
+      sfSumJP3: preview.jp3 ? preview.jp3.sum : null,
+    });
+  }
+
+  const NumField = ({k,label}) => (
+    <div className="field">
+      <label className="flabel">{label}</label>
+      <input className="input" type="number" step="0.1" value={vals[k]} onChange={e=>set(k, Number(e.target.value))}/>
+    </div>
+  );
+
   return (
     <div>
-      <div className="grid grid-3">
-        {fields.map(([k,label])=>(
-          <div className="field" key={k}>
-            <label className="flabel">{label}</label>
-            <input className="input" type="number" step="0.1" value={vals[k]} onChange={e=>setVals({...vals,[k]:Number(e.target.value)})}/>
-          </div>
-        ))}
+      <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Peso e estatura</div>
+      <div className="grid grid-2" style={{marginBottom:18}}>
+        <NumField k="weight" label="Peso corporal (kg)"/>
+        <NumField k="height" label="Altura / estatura (cm)"/>
       </div>
-      <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={()=>onSave(vals)}>Salvar medição</button>
+
+      <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Circunferências (cm)</div>
+      <div className="grid grid-3" style={{marginBottom:18}}>
+        <NumField k="waist" label="Cintura (CC)"/>
+        <NumField k="hip" label="Quadril (CQ)"/>
+        <div/>
+        <NumField k="armR" label="Braço direito (CB)"/>
+        <NumField k="armL" label="Braço esquerdo (CB)"/>
+        <div/>
+        <NumField k="calfR" label="Panturrilha direita (CP)"/>
+        <NumField k="calfL" label="Panturrilha esquerda (CP)"/>
+        <div/>
+        <NumField k="thighR" label="Coxa direita (CCx)"/>
+        <NumField k="thighL" label="Coxa esquerda (CCx)"/>
+      </div>
+
+      <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Dobras cutâneas (mm)</div>
+      <div className="grid grid-3" style={{marginBottom:18}}>
+        <NumField k="sfTriceps" label="Tricipital (DCT)"/>
+        <NumField k="sfBiceps" label="Bicipital (DCB)"/>
+        <NumField k="sfSubscapular" label="Subescapular (DCSE)"/>
+        <NumField k="sfSuprailiac" label="Supra-ilíaca (DCSI)"/>
+        <NumField k="sfAbdominal" label="Abdominal (DCA)"/>
+        <NumField k="sfChest" label="Peitoral (DCP)"/>
+        <NumField k="sfMidaxillary" label="Axilar média (DCAM)"/>
+        <NumField k="sfThigh" label="Coxa (DCC)"/>
+        <NumField k="sfCalf" label="Panturrilha medial (DCPM)"/>
+      </div>
+
+      <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Índices derivados (calculado automaticamente)</div>
+      <div className="card" style={{background:"var(--bg-elev)",marginBottom:18}}>
+        <div className="grid grid-4">
+          <div className="stat-card"><span className="stat-label">IMC</span><span className="stat-value" style={{fontSize:19}}>{preview.bmi || "—"}</span></div>
+          <div className="stat-card"><span className="stat-label">% Gordura (JP7)</span><span className="stat-value" style={{fontSize:19}}>{preview.jp7 ? preview.jp7.pct+"%" : "—"}</span></div>
+          <div className="stat-card"><span className="stat-label">% Gordura (JP3)</span><span className="stat-value" style={{fontSize:19}}>{preview.jp3 ? preview.jp3.pct+"%" : "—"}</span></div>
+          <div className="stat-card"><span className="stat-label">Massa magra (JP7)</span><span className="stat-value" style={{fontSize:19}}>{preview.leanJP7 != null ? preview.leanJP7+"kg" : "—"}</span></div>
+        </div>
+        {!profile.age && <div style={{fontSize:11.5,color:"var(--amber)",marginTop:10}}>Defina a idade no Perfil pra calcular o % de gordura.</div>}
+      </div>
+
+      <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={handleSave}>Salvar medição</button>
     </div>
   );
 }
