@@ -908,9 +908,24 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState(100);
   const [showCustom, setShowCustom] = useState(false);
+  const [editingFood, setEditingFood] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const filtered = foods.filter(f=> f.name.toLowerCase().includes(q.toLowerCase())).slice(0,40);
 
   function selectFood(f){ setSelected(f); setQty(f.per); }
+
+  function saveEditedFood(updated){
+    setFoods(prev=>prev.map(f=>f.id===updated.id?updated:f));
+    setEditingFood(null);
+  }
+  function requestDeleteFood(id){
+    if(confirmDeleteId===id){
+      setFoods(prev=>prev.filter(f=>f.id!==id));
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+    }
+  }
 
   return (
     <Modal title="Adicionar alimento" onClose={onClose}>
@@ -928,13 +943,25 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
                   <div style={{fontSize:13.5,fontWeight:600}}>{f.name} {f.custom && <span className="badge badge-blue" style={{marginLeft:6}}>custom</span>}</div>
                   <div style={{fontSize:11.5,color:"var(--text-faint)"}}>{f.kcal} kcal / {f.per}{f.unit==="g"||f.unit==="ml"?f.unit:` ${f.unit}`}</div>
                 </div>
-                <ChevronRight size={15} color="var(--text-faint)"/>
+                {f.custom ? (
+                  <div style={{display:"flex",gap:2,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                    <button className="iconbtn" onClick={()=>setEditingFood(f)}><Edit3 size={14}/></button>
+                    {confirmDeleteId===f.id ? (
+                      <button className="btn btn-sm btn-danger" onClick={()=>requestDeleteFood(f.id)}>Excluir?</button>
+                    ) : (
+                      <button className="iconbtn" onClick={()=>requestDeleteFood(f.id)}><Trash2 size={14}/></button>
+                    )}
+                  </div>
+                ) : (
+                  <ChevronRight size={15} color="var(--text-faint)"/>
+                )}
               </div>
             ))}
             {!filtered.length && <div className="empty">Nenhum alimento encontrado</div>}
           </div>
           <button className="btn btn-ghost btn-sm" style={{marginTop:10}} onClick={()=>setShowCustom(true)}><Plus size={13}/> Criar alimento personalizado</button>
           {showCustom && <CustomFoodForm onSave={(f)=>{setFoods(prev=>[...prev,f]); setShowCustom(false); selectFood(f);}} onClose={()=>setShowCustom(false)}/>}
+          {editingFood && <CustomFoodForm initial={editingFood} onSave={saveEditedFood} onClose={()=>setEditingFood(null)}/>}
         </>
       ) : (
         <div>
@@ -964,10 +991,11 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
   );
 }
 
-function CustomFoodForm({ onSave, onClose }){
-  const [f, setF] = useState({name:"",brand:"",per:100,unit:"g",kcal:0,protein:0,carb:0,fat:0,fiber:0,sodium:0});
+function CustomFoodForm({ onSave, onClose, initial }){
+  const [f, setF] = useState(initial || {name:"",brand:"",per:100,unit:"g",kcal:0,protein:0,carb:0,fat:0,fiber:0,sodium:0});
+  const isEditing = !!initial;
   return (
-    <Modal title="Alimento personalizado" onClose={onClose}>
+    <Modal title={isEditing ? "Editar alimento" : "Alimento personalizado"} onClose={onClose}>
       <div className="field"><label className="flabel">Nome</label><input className="input" value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
       <div className="grid grid-2" style={{marginBottom:14}}>
         <div><label className="flabel">Base</label><input className="input" type="number" value={f.per} onChange={e=>setF({...f,per:Number(e.target.value)})}/></div>
@@ -984,7 +1012,9 @@ function CustomFoodForm({ onSave, onClose }){
         <div className="field"><label className="flabel">Gordura (g)</label><input className="input" type="number" value={f.fat} onChange={e=>setF({...f,fat:Number(e.target.value)})}/></div>
       </div>
       <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}}
-        onClick={()=> f.name.trim() && onSave({...f, id:"custom-"+uid(), custom:true})}>Salvar alimento</button>
+        onClick={()=> f.name.trim() && onSave(isEditing ? f : {...f, id:"custom-"+uid(), custom:true})}>
+        {isEditing ? "Salvar alterações" : "Salvar alimento"}
+      </button>
     </Modal>
   );
 }
