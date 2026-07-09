@@ -565,10 +565,16 @@ export default function FitnessApp({ user }){
   },[restTimer]);
 
   useEffect(()=>{
-    function resync(){ if(document.visibilityState === "visible") setNow(Date.now()); }
-    document.addEventListener("visibilitychange", resync);
+    function resync(){ setNow(Date.now()); }
+    function onVisibility(){ if(document.visibilityState === "visible") resync(); }
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", resync);
-    return ()=>{ document.removeEventListener("visibilitychange", resync); window.removeEventListener("focus", resync); };
+    window.addEventListener("pageshow", resync);
+    return ()=>{
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", resync);
+      window.removeEventListener("pageshow", resync);
+    };
   },[]);
 
   const restRemaining = restTimer ? Math.max(0, Math.round((restTimer.endTime - now)/1000)) : 0;
@@ -1199,7 +1205,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
                 <div className="list-row" key={ex.id}>
                   <span className="badge badge-muted" style={{minWidth:70,textAlign:"center"}}>{ex.group}</span>
                   <span style={{flex:1,fontSize:13}}>{ex.name}</span>
-                  <span style={{fontSize:12,color:"var(--text-dim)"}}>{ex.sets}x{ex.reps} · {ex.load}kg</span>
+                  <span style={{fontSize:12,color:"var(--text-dim)"}}>{ex.sets}x{ex.reps}{ex.load ? ` · ${ex.load}kg` : ""}</span>
                   <button className="iconbtn" onClick={()=>deleteExercise(treino.id, ex.id)}><X size={13}/></button>
                 </div>
               ))}
@@ -1326,7 +1332,7 @@ function PromptModal({ title, placeholder, onSave, onClose }){
 }
 
 function ExerciseForm({ onSave, onClose }){
-  const [ex, setEx] = useState({name:"",group:MUSCLE_GROUPS[0],sets:3,reps:"10-12",load:20,rest:60,notes:""});
+  const [ex, setEx] = useState({name:"",group:MUSCLE_GROUPS[0],sets:3,reps:"10-12",load:0,rest:60,notes:""});
   return (
     <Modal title="Novo exercício" onClose={onClose}>
       <div className="field"><label className="flabel">Nome do exercício</label><input className="input" value={ex.name} onChange={e=>setEx({...ex,name:e.target.value})} autoFocus/></div>
@@ -1338,10 +1344,10 @@ function ExerciseForm({ onSave, onClose }){
       <div className="grid grid-2">
         <div className="field"><label className="flabel">Séries</label><input className="input" type="number" value={ex.sets} onChange={e=>setEx({...ex,sets:Number(e.target.value)})}/></div>
         <div className="field"><label className="flabel">Repetições</label><input className="input" value={ex.reps} onChange={e=>setEx({...ex,reps:e.target.value})}/></div>
-        <div className="field"><label className="flabel">Carga (kg)</label><input className="input" type="number" value={ex.load} onChange={e=>setEx({...ex,load:Number(e.target.value)})}/></div>
         <div className="field"><label className="flabel">Descanso (s)</label><input className="input" type="number" value={ex.rest} onChange={e=>setEx({...ex,rest:Number(e.target.value)})}/></div>
       </div>
       <div className="field"><label className="flabel">Observações</label><textarea className="input" rows={2} value={ex.notes} onChange={e=>setEx({...ex,notes:e.target.value})}/></div>
+      <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:14}}>A carga é registrada depois, quando você iniciar o treino — é lá que fica anotada a evolução.</div>
       <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={()=>ex.name.trim()&&onSave(ex)}>Adicionar exercício</button>
     </Modal>
   );
@@ -1400,7 +1406,7 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
           <div className="exercise-card" key={l.exId}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
               <div style={{fontWeight:700,fontSize:14.5}}>{l.exName}</div>
-              <span className="badge badge-muted">Meta: {exDef.sets}x{exDef.reps} · {exDef.load}kg</span>
+              <span className="badge badge-muted">Meta: {exDef.sets}x{exDef.reps}{exDef.load ? ` · ${exDef.load}kg` : ""}</span>
             </div>
             <div className="set-row" style={{color:"var(--text-faint)",fontSize:11}}>
               <span></span><span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span>
@@ -1602,8 +1608,14 @@ function BodyTab({ bodyData, setBodyData, profile, setProfile, user }){
   }
 
   function addEntry(entry){
+    const isFirstEver = bodyData.length === 0;
     setBodyData(prev=>[...prev, {...entry, id:uid(), date:todayISO()}]);
-    if(entry.weight) setProfile(p=>({...p, weight:entry.weight, height:entry.height||p.height}));
+    if(entry.weight){
+      setProfile(p=>({
+        ...p, weight:entry.weight, height:entry.height||p.height,
+        initialWeight: isFirstEver ? entry.weight : p.initialWeight,
+      }));
+    }
     setShowForm(false);
   }
 
@@ -2038,12 +2050,17 @@ function ProfileTab({ profile, setProfile, resetAllData }){
           <div className="field"><label className="flabel">Nome</label><input className="input" value={p.name} onChange={e=>setP({...p,name:e.target.value})}/></div>
           <div className="grid grid-2">
             <div className="field"><label className="flabel">Altura (cm)</label><input className="input" type="number" value={p.height} onChange={e=>setP({...p,height:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Peso (kg)</label><input className="input" type="number" value={p.weight} onChange={e=>setP({...p,weight:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Peso atual (kg)</label><input className="input" type="number" value={p.weight} onChange={e=>setP({...p,weight:Number(e.target.value)})}/></div>
+            <div className="field">
+              <label className="flabel">Peso inicial (kg)</label>
+              <input className="input" type="number" value={p.initialWeight} onChange={e=>setP({...p,initialWeight:Number(e.target.value)})}/>
+            </div>
             <div className="field"><label className="flabel">Sexo</label>
               <select className="input" value={p.gender} onChange={e=>setP({...p,gender:e.target.value})}><option value="M">Masculino</option><option value="F">Feminino</option></select>
             </div>
             <div className="field"><label className="flabel">Idade</label><input className="input" type="number" value={p.age} onChange={e=>setP({...p,age:Number(e.target.value)})}/></div>
           </div>
+          <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:-6,marginBottom:14}}>"Peso inicial" é o ponto de partida usado no Dashboard pra calcular quanto você já ganhou ou perdeu.</div>
           <div className="field"><label className="flabel">Objetivo</label>
             <select className="input" value={p.goal} onChange={e=>setP({...p,goal:e.target.value})}>
               <option>Ganho de massa</option><option>Emagrecimento</option><option>Manutenção</option>
@@ -2103,4 +2120,3 @@ function ProfileTab({ profile, setProfile, resetAllData }){
     </div>
   );
 }
-
