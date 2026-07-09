@@ -495,6 +495,7 @@ export default function FitnessApp({ user }){
   const [history, setHistory] = useState([]);
   const [bodyData, setBodyData] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [schedule, setSchedule] = useState({}); // { "0"-"6" (dia da semana) -> treinoId | null }
   const [activeSession, setActiveSession] = useState(null); // {treinoId, ficha, startedAt, log:[{exId,sets:[{weight,reps,done}]}]}
   const [restTimer, setRestTimer] = useState(null); // {endTime, total}
   const [now, setNow] = useState(Date.now());
@@ -503,7 +504,7 @@ export default function FitnessApp({ user }){
 
   useEffect(()=>{
     (async ()=>{
-      const [f,d,w,fi,h,b,g] = await Promise.all([
+      const [f,d,w,fi,h,b,g,sc] = await Promise.all([
         loadKey(user.id, "foods-custom", []),
         loadKey(user.id, "diary:"+today, null),
         loadKey(user.id, "water-log", {}),
@@ -511,6 +512,7 @@ export default function FitnessApp({ user }){
         loadKey(user.id, "workout-history", null),
         loadKey(user.id, "body-measurements", null),
         loadKey(user.id, "goals", null),
+        loadKey(user.id, "schedule", {}),
       ]);
 
       let p = await loadProfileFromSupabase(user.id);
@@ -531,6 +533,7 @@ export default function FitnessApp({ user }){
       setHistory(h||[]);
       setBodyData(b||[]);
       setGoals(g||[]);
+      setSchedule(sc||{});
       setLoaded(true);
     })();
     // eslint-disable-next-line
@@ -552,6 +555,7 @@ export default function FitnessApp({ user }){
   useEffect(()=>{ if(loaded && diary[today]) saveKey(user.id, "diary:"+today, diary[today]); },[diary, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "water-log", water); },[water, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "fichas", fichas); },[fichas, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "schedule", schedule); },[schedule, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "workout-history", history); },[history, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "body-measurements", bodyData); },[bodyData, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "goals", goals); },[goals, loaded]);
@@ -676,10 +680,10 @@ export default function FitnessApp({ user }){
       </aside>
 
       <main className={"main"+(sidebarOpen?"":" full")}>
-        {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas}} />}
+        {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule}} />}
         {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile}} />}
         {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, profile}} />}
-        {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile}} />}
+        {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
         {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
         {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
@@ -699,7 +703,7 @@ export default function FitnessApp({ user }){
 /* ============================================================
    DASHBOARD
 ============================================================ */
-function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas }){
+function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule }){
   const calPct = macroTotals.kcal/profile.caloriesTarget;
   const proPct = macroTotals.p/profile.proteinTarget;
   const waterPct = todayWater/profile.waterTarget;
@@ -709,7 +713,17 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
   const recentWorkouts = [...history].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,4);
   const weightSeries = bodyData.slice(-10).map(b=>({date:b.date.slice(5), peso:b.weight}));
   const weightDelta = bodyData.length>1 ? fmt1(bodyData[bodyData.length-1].weight - bodyData[0].weight) : 0;
-  const todaysWorkoutName = fichas[0]?.treinos?.[new Date().getDay()%3]?.name || "Descanso";
+
+  const todayDow = new Date().getDay();
+  const scheduledTreinoId = schedule[todayDow];
+  let todaysTreino = null, todaysFichaName = "";
+  if(scheduledTreinoId){
+    for(const f of fichas){
+      const t = f.treinos.find(t=>t.id===scheduledTreinoId);
+      if(t){ todaysTreino = t; todaysFichaName = f.name; break; }
+    }
+  }
+  const todaysWorkoutName = scheduledTreinoId === "rest" ? "Descanso" : (todaysTreino ? todaysTreino.name : "Não definido");
 
   const dow = new Date().toLocaleDateString("pt-BR",{weekday:"long", day:"numeric", month:"long"});
 
@@ -734,7 +748,7 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
         <div className="card stat-card">
           <span className="stat-label">Treino de hoje</span>
           <span className="stat-value" style={{fontSize:17}}>{todaysWorkoutName}</span>
-          <span className="stat-sub">{fichas[0]?.name || "Nenhuma ficha ativa"}</span>
+          <span className="stat-sub">{todaysFichaName || "Defina em Treino → Agenda semanal"}</span>
         </div>
         <div className="card stat-card">
           <span className="stat-label">Sequência</span>
@@ -1120,7 +1134,47 @@ function WaterTab({ water, setWater, today, todayWater, profile }){
 /* ============================================================
    WORKOUT TAB
 ============================================================ */
-function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile }){
+const WEEKDAYS = [
+  { dow:1, label:"Segunda" }, { dow:2, label:"Terça" }, { dow:3, label:"Quarta" },
+  { dow:4, label:"Quinta" }, { dow:5, label:"Sexta" }, { dow:6, label:"Sábado" }, { dow:0, label:"Domingo" },
+];
+
+function WeeklyScheduleCard({ fichas, schedule, setSchedule }){
+  const allTreinos = fichas.flatMap(f => f.treinos.map(t => ({ id:t.id, label:`${t.name} · ${f.name}` })));
+  const todayDow = new Date().getDay();
+
+  function setDay(dow, value){
+    setSchedule(prev => ({ ...prev, [dow]: value || undefined }));
+  }
+
+  return (
+    <div className="card" style={{marginBottom:18}}>
+      <div className="card-title">Agenda semanal <span className="badge badge-muted">define o "Treino de hoje" no Dashboard</span></div>
+      {!allTreinos.length ? (
+        <div className="empty">Crie treinos numa ficha pra poder escalar eles na semana.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {WEEKDAYS.map(d=>(
+            <div key={d.dow} style={{display:"flex",alignItems:"center",gap:12}}>
+              <span style={{width:80,fontSize:12.5,fontWeight:600,color: d.dow===todayDow ? "var(--accent)" : "var(--text-dim)"}}>
+                {d.label}{d.dow===todayDow ? " (hoje)" : ""}
+              </span>
+              <select className="input" style={{flex:1}} value={schedule[d.dow] || ""} onChange={e=>setDay(d.dow, e.target.value)}>
+                <option value="">— Não definido —</option>
+                <option value="rest">Descanso</option>
+                {allTreinos.map(t=>(
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule }){
   const [activeFichaId, setActiveFichaId] = useState(fichas[0]?.id);
   const [showNewFicha, setShowNewFicha] = useState(false);
   const [showNewTreino, setShowNewTreino] = useState(false);
@@ -1191,6 +1245,8 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
           <button key={f.id} className={"tab-btn"+(f.id===ficha.id?" active":"")} onClick={()=>setActiveFichaId(f.id)}>{f.name}</button>
         ))}
       </div>
+
+      <WeeklyScheduleCard fichas={fichas} schedule={schedule} setSchedule={setSchedule}/>
 
       <div className="grid grid-2">
         {ficha.treinos.map(treino=>{
