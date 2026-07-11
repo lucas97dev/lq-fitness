@@ -496,6 +496,7 @@ export default function FitnessApp({ user }){
   const [bodyData, setBodyData] = useState([]);
   const [goals, setGoals] = useState([]);
   const [schedule, setSchedule] = useState({}); // { "0"-"6" (dia da semana) -> treinoId | null }
+  const [dietPlan, setDietPlan] = useState([]); // [{id, name, items:[{id,foodId,qty}]}] — dieta fixa/planejada
   const [activeSession, setActiveSession] = useState(null); // {treinoId, ficha, startedAt, log:[{exId,sets:[{weight,reps,done}]}]}
   const [restTimer, setRestTimer] = useState(null); // {endTime, total}
   const [now, setNow] = useState(Date.now());
@@ -504,7 +505,7 @@ export default function FitnessApp({ user }){
 
   useEffect(()=>{
     (async ()=>{
-      const [f,d,w,fi,h,b,g,sc] = await Promise.all([
+      const [f,d,w,fi,h,b,g,sc,dp] = await Promise.all([
         loadKey(user.id, "foods-custom", []),
         loadKey(user.id, "diary:"+today, null),
         loadKey(user.id, "water-log", {}),
@@ -513,6 +514,7 @@ export default function FitnessApp({ user }){
         loadKey(user.id, "body-measurements", null),
         loadKey(user.id, "goals", null),
         loadKey(user.id, "schedule", {}),
+        loadKey(user.id, "diet-plan", null),
       ]);
 
       let p = await loadProfileFromSupabase(user.id);
@@ -534,6 +536,7 @@ export default function FitnessApp({ user }){
       setBodyData(b||[]);
       setGoals(g||[]);
       setSchedule(sc||{});
+      setDietPlan(dp||[]);
       setLoaded(true);
     })();
     // eslint-disable-next-line
@@ -556,6 +559,7 @@ export default function FitnessApp({ user }){
   useEffect(()=>{ if(loaded) saveKey(user.id, "water-log", water); },[water, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "fichas", fichas); },[fichas, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "schedule", schedule); },[schedule, loaded]);
+  useEffect(()=>{ if(loaded) saveKey(user.id, "diet-plan", dietPlan); },[dietPlan, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "workout-history", history); },[history, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "body-measurements", bodyData); },[bodyData, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "goals", goals); },[goals, loaded]);
@@ -681,7 +685,7 @@ export default function FitnessApp({ user }){
 
       <main className={"main"+(sidebarOpen?"":" full")}>
         {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule}} />}
-        {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile}} />}
+        {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan}} />}
         {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, profile}} />}
         {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
@@ -836,14 +840,21 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
 /* ============================================================
    DIET TAB
 ============================================================ */
-function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile }){
-  const [addingTo, setAddingTo] = useState(null); // mealId
-  const [newMealName, setNewMealName] = useState("");
-  const [showNewMeal, setShowNewMeal] = useState(false);
+function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan }){
+  const [view, setView] = useState("today"); // today | plan
+  const [confirmUseId, setConfirmUseId] = useState(null);
 
-  function mealTotals(meal){
+  function setTodayMeals(updater){
+    setDiary(prev=>{
+      const d = {...(prev[today]||{meals:[]})};
+      d.meals = typeof updater === "function" ? updater(d.meals) : updater;
+      return {...prev, [today]: d};
+    });
+  }
+
+  function mealTotals(items){
     let kcal=0,p=0,c=0,f=0;
-    meal.items.forEach(it=>{
+    items.forEach(it=>{
       const food = foods.find(x=>x.id===it.foodId); if(!food) return;
       const factor = it.qty/food.per;
       kcal+=food.kcal*factor; p+=food.protein*factor; c+=food.carb*factor; f+=food.fat*factor;
@@ -851,69 +862,122 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
     return {kcal,p,c,f};
   }
 
-  function addMeal(){
-    if(!newMealName.trim()) return;
-    setDiary(prev=>{
-      const d = {...(prev[today]||{meals:[]})};
-      d.meals=[...d.meals, {id:uid(), name:newMealName.trim(), items:[]}];
-      return {...prev,[today]:d};
-    });
-    setNewMealName(""); setShowNewMeal(false);
+  function findPlanMeal(mealName){
+    return dietPlan.find(pm => pm.name.trim().toLowerCase() === mealName.trim().toLowerCase() && pm.items.length);
   }
-  function deleteMeal(mealId){
-    setDiary(prev=>{
-      const d={...(prev[today]||{meals:[]})};
-      d.meals=d.meals.filter(m=>m.id!==mealId);
-      return {...prev,[today]:d};
-    });
-  }
-  function removeItem(mealId, itemId){
-    setDiary(prev=>{
-      const d={...(prev[today]||{meals:[]})};
-      d.meals=d.meals.map(m=>m.id!==mealId?m:{...m, items:m.items.filter(i=>i.id!==itemId)});
-      return {...prev,[today]:d};
-    });
-  }
-  function setQty(mealId, itemId, qty){
-    setDiary(prev=>{
-      const d={...(prev[today]||{meals:[]})};
-      d.meals=d.meals.map(m=>m.id!==mealId?m:{...m, items:m.items.map(i=>i.id===itemId?{...i,qty}:i)});
-      return {...prev,[today]:d};
-    });
-  }
-  function addFoodToMeal(mealId, food, qty){
-    setDiary(prev=>{
-      const d={...(prev[today]||{meals:[]})};
-      d.meals=d.meals.map(m=>m.id!==mealId?m:{...m, items:[...m.items, {id:uid(), foodId:food.id, qty}]});
-      return {...prev,[today]:d};
-    });
-    setAddingTo(null);
+
+  function usePlanMeal(meal, planMeal){
+    setTodayMeals(prev => prev.map(m => m.id!==meal.id ? m : {
+      ...m, items: planMeal.items.map(it => ({ id:uid(), foodId:it.foodId, qty:it.qty }))
+    }));
+    setConfirmUseId(null);
   }
 
   return (
     <div>
       <div className="section-head">
-        <h2>Dieta de hoje</h2>
-        <button className="btn btn-primary" onClick={()=>setShowNewMeal(true)}><Plus size={15}/> Nova refeição</button>
+        <h2>Dieta</h2>
+        <div className="tabs">
+          <button className={"tab-btn"+(view==="today"?" active":"")} onClick={()=>setView("today")}>Hoje</button>
+          <button className={"tab-btn"+(view==="plan"?" active":"")} onClick={()=>setView("plan")}>Plano alimentar</button>
+        </div>
       </div>
 
-      <div className="grid grid-4" style={{marginBottom:18}}>
-        <div className="card stat-card"><span className="stat-label">Calorias</span><span className="stat-value">{Math.round(macroTotals.kcal)}</span><span className="stat-sub">meta {profile.caloriesTarget} kcal</span></div>
-        <div className="card stat-card"><span className="stat-label">Proteínas</span><span className="stat-value">{fmt1(macroTotals.p)}g</span><span className="stat-sub">meta {profile.proteinTarget}g</span></div>
-        <div className="card stat-card"><span className="stat-label">Carboidratos</span><span className="stat-value">{fmt1(macroTotals.c)}g</span><span className="stat-sub">meta {profile.carbTarget}g</span></div>
-        <div className="card stat-card"><span className="stat-label">Gorduras</span><span className="stat-value">{fmt1(macroTotals.f)}g</span><span className="stat-sub">meta {profile.fatTarget}g</span></div>
+      {view === "today" ? (
+        <>
+          <div className="grid grid-4" style={{marginBottom:18}}>
+            <div className="card stat-card"><span className="stat-label">Calorias</span><span className="stat-value">{Math.round(macroTotals.kcal)}</span><span className="stat-sub">meta {profile.caloriesTarget} kcal</span></div>
+            <div className="card stat-card"><span className="stat-label">Proteínas</span><span className="stat-value">{fmt1(macroTotals.p)}g</span><span className="stat-sub">meta {profile.proteinTarget}g</span></div>
+            <div className="card stat-card"><span className="stat-label">Carboidratos</span><span className="stat-value">{fmt1(macroTotals.c)}g</span><span className="stat-sub">meta {profile.carbTarget}g</span></div>
+            <div className="card stat-card"><span className="stat-label">Gorduras</span><span className="stat-value">{fmt1(macroTotals.f)}g</span><span className="stat-sub">meta {profile.fatTarget}g</span></div>
+          </div>
+
+          <div className="card" style={{marginBottom:18}}>
+            <div className="card-title">Progresso do dia</div>
+            <ProgressBar label="Calorias" value={macroTotals.kcal} max={profile.caloriesTarget} unit=" kcal" color="var(--accent)"/>
+            <ProgressBar label="Proteínas" value={macroTotals.p} max={profile.proteinTarget} unit="g" color="var(--blue)"/>
+            <ProgressBar label="Carboidratos" value={macroTotals.c} max={profile.carbTarget} unit="g" color="var(--purple)"/>
+            <ProgressBar label="Gorduras" value={macroTotals.f} max={profile.fatTarget} unit="g" color="var(--red)"/>
+          </div>
+
+          <MealsList
+            meals={todayMeals} setMeals={setTodayMeals} foods={foods} setFoods={setFoods}
+            mealTotals={mealTotals}
+            renderExtra={(meal)=>{
+              const planMeal = findPlanMeal(meal.name);
+              if(!planMeal) return null;
+              const pt = mealTotals(planMeal.items);
+              return (
+                <div style={{marginBottom:10}}>
+                  {confirmUseId===meal.id ? (
+                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:11.5,color:"var(--text-dim)"}}>Isso substitui os alimentos já lançados nessa refeição. Confirmar?</span>
+                      <button className="btn btn-sm btn-danger" onClick={()=>usePlanMeal(meal, planMeal)}>Sim, usar planejada</button>
+                      <button className="btn btn-sm btn-ghost" onClick={()=>setConfirmUseId(null)}>Cancelar</button>
+                    </div>
+                  ) : (
+                    <button className="btn btn-sm" style={{background:"var(--accent-glow)",borderColor:"rgba(217,169,79,0.35)",color:"var(--accent)"}}
+                      onClick={()=> meal.items.length ? setConfirmUseId(meal.id) : usePlanMeal(meal, planMeal)}>
+                      <Check size={13}/> Usar refeição planejada ({Math.round(pt.kcal)} kcal)
+                    </button>
+                  )}
+                </div>
+              );
+            }}
+          />
+
+          {!dietPlan.length && (
+            <div className="card" style={{textAlign:"center",padding:"20px"}}>
+              <div style={{fontSize:13,color:"var(--text-dim)",marginBottom:10}}>Ainda não existe um plano alimentar fixo cadastrado.</div>
+              <button className="btn btn-sm btn-primary" onClick={()=>setView("plan")}>Criar plano alimentar</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>
+            Monte aqui a dieta fixa recomendada (ex: pela nutricionista). No dia a dia, se a refeição realizada bater com o plano, basta um clique em "Usar refeição planejada" — sem precisar lançar tudo de novo.
+          </div>
+          <MealsList meals={dietPlan} setMeals={setDietPlan} foods={foods} setFoods={setFoods} mealTotals={mealTotals}/>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MealsList({ meals, setMeals, foods, setFoods, mealTotals, renderExtra }){
+  const [addingTo, setAddingTo] = useState(null);
+  const [newMealName, setNewMealName] = useState("");
+  const [showNewMeal, setShowNewMeal] = useState(false);
+
+  function addMeal(){
+    if(!newMealName.trim()) return;
+    setMeals(prev=>[...prev, {id:uid(), name:newMealName.trim(), items:[]}]);
+    setNewMealName(""); setShowNewMeal(false);
+  }
+  function deleteMeal(mealId){
+    setMeals(prev=>prev.filter(m=>m.id!==mealId));
+  }
+  function removeItem(mealId, itemId){
+    setMeals(prev=>prev.map(m=>m.id!==mealId?m:{...m, items:m.items.filter(i=>i.id!==itemId)}));
+  }
+  function setQty(mealId, itemId, qty){
+    setMeals(prev=>prev.map(m=>m.id!==mealId?m:{...m, items:m.items.map(i=>i.id===itemId?{...i,qty}:i)}));
+  }
+  function addFoodToMeal(mealId, food, qty){
+    setMeals(prev=>prev.map(m=>m.id!==mealId?m:{...m, items:[...m.items, {id:uid(), foodId:food.id, qty}]}));
+    setAddingTo(null);
+  }
+
+  return (
+    <div>
+      <div className="section-head" style={{marginBottom:14}}>
+        <span/>
+        <button className="btn btn-sm btn-primary" onClick={()=>setShowNewMeal(true)}><Plus size={13}/> Nova refeição</button>
       </div>
 
-      <div className="card" style={{marginBottom:18}}>
-        <div className="card-title">Progresso do dia</div>
-        <ProgressBar label="Calorias" value={macroTotals.kcal} max={profile.caloriesTarget} unit=" kcal" color="var(--accent)"/>
-        <ProgressBar label="Proteínas" value={macroTotals.p} max={profile.proteinTarget} unit="g" color="var(--blue)"/>
-        <ProgressBar label="Carboidratos" value={macroTotals.c} max={profile.carbTarget} unit="g" color="var(--purple)"/>
-        <ProgressBar label="Gorduras" value={macroTotals.f} max={profile.fatTarget} unit="g" color="var(--red)"/>
-      </div>
-
-      {todayMeals.map(meal=>{
-        const t = mealTotals(meal);
+      {meals.map(meal=>{
+        const t = mealTotals(meal.items);
         return (
           <div className="card" key={meal.id} style={{marginBottom:14}}>
             <div className="card-title">
@@ -923,6 +987,7 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
                 <button className="iconbtn" onClick={()=>deleteMeal(meal.id)}><Trash2 size={14}/></button>
               </div>
             </div>
+            {renderExtra && renderExtra(meal)}
             {meal.items.map(it=>{
               const food = foods.find(f=>f.id===it.foodId);
               if(!food) return null;
