@@ -237,7 +237,7 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 
 .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
 .cal-cell{aspect-ratio:1;border-radius:9px;border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);position:relative;background:var(--bg-elev);}
-.cal-cell.trained{background:var(--accent-glow);border-color:rgba(62,230,168,0.35);color:var(--accent);font-weight:700;}
+.cal-cell.trained{background:var(--accent-glow);border-color:rgba(217,169,79,0.4);color:var(--accent);font-weight:700;}
 .cal-cell.today{outline:1.5px solid var(--text);}
 .cal-dot{position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--blue);}
 
@@ -455,6 +455,20 @@ function Modal({ title, onClose, children, wide }){
   );
 }
 
+function CelebrationModal({ celebration, onClose }){
+  if(!celebration) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{textAlign:"center", maxWidth:360}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:52, marginBottom:10, lineHeight:1}}>{celebration.emoji || "🎉"}</div>
+        <h3 style={{fontSize:19, marginBottom:8}}>{celebration.title}</h3>
+        <div style={{fontSize:13.5, color:"var(--text-dim)", marginBottom:22, lineHeight:1.5}}>{celebration.subtitle}</div>
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={onClose}>Continuar</button>
+      </div>
+    </div>
+  );
+}
+
 const NAV = [
   { key:"dashboard", label:"Dashboard", icon:LayoutDashboard },
   { key:"diet", label:"Dieta", icon:Utensils },
@@ -500,6 +514,8 @@ export default function FitnessApp({ user }){
   const [activeSession, setActiveSession] = useState(null); // {treinoId, ficha, startedAt, log:[{exId,sets:[{weight,reps,done}]}]}
   const [restTimer, setRestTimer] = useState(null); // {endTime, total}
   const [now, setNow] = useState(Date.now());
+  const [celebration, setCelebration] = useState(null);
+  const waterCelebratedRef = useRef(null); // stores the date string already celebrated, to avoid repeating
 
   const today = todayISO();
 
@@ -588,7 +604,20 @@ export default function FitnessApp({ user }){
   const restRemaining = restTimer ? Math.max(0, Math.round((restTimer.endTime - now)/1000)) : 0;
 
   const todayMeals = diary[today]?.meals || [];
-  const todayWater = water[today] || 0;
+  const todayWaterEntries = water[today] || [];
+  const todayWater = todayWaterEntries.reduce((s,e)=>s+(e.ml||0),0)/1000;
+
+  useEffect(()=>{
+    if(!loaded) return;
+    if(profile.waterTarget && todayWater >= profile.waterTarget && waterCelebratedRef.current !== today){
+      waterCelebratedRef.current = today;
+      setCelebration({
+        emoji: "💧",
+        title: "Meta de água batida!",
+        subtitle: `Você bebeu ${fmt1(todayWater)}L hoje, atingindo sua meta de ${profile.waterTarget}L. Continue se hidratando!`,
+      });
+    }
+  },[todayWater, profile.waterTarget, today, loaded]);
 
   const macroTotals = useMemo(()=>{
     let kcal=0, p=0, c=0, f=0;
@@ -626,6 +655,8 @@ export default function FitnessApp({ user }){
     setHistory([]);
     setBodyData([]);
     setGoals([]);
+    setSchedule({});
+    setDietPlan([]);
   }
 
   function updateFood(items, mealId, itemId, newQty){
@@ -686,8 +717,8 @@ export default function FitnessApp({ user }){
       <main className={"main"+(sidebarOpen?"":" full")}>
         {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule}} />}
         {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan}} />}
-        {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, profile}} />}
-        {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule}} />}
+        {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, todayWaterEntries, profile}} />}
+        {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
         {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
         {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
@@ -700,6 +731,8 @@ export default function FitnessApp({ user }){
           {restRemaining>0 ? `${Math.floor(restRemaining/60)}:${String(restRemaining%60).padStart(2,"0")} descanso` : "Descanso concluído"}
         </button>
       )}
+
+      <CelebrationModal celebration={celebration} onClose={()=>setCelebration(null)}/>
     </div>
   );
 }
@@ -707,6 +740,60 @@ export default function FitnessApp({ user }){
 /* ============================================================
    DASHBOARD
 ============================================================ */
+function TrainingCalendar({ history }){
+  const [viewDate, setViewDate] = useState(new Date());
+  const trainedDates = useMemo(()=> new Set(history.map(h=>h.date)), [history]);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay()+6)%7; // Monday-first
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayStr = todayISO();
+
+  const cells = [];
+  for(let i=0;i<startOffset;i++) cells.push(null);
+  for(let d=1; d<=daysInMonth; d++) cells.push(d);
+
+  let trainedCount = 0;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    if(trainedDates.has(iso)) trainedCount++;
+  }
+
+  const monthLabel = viewDate.toLocaleDateString("pt-BR", {month:"long", year:"numeric"});
+
+  return (
+    <div className="card">
+      <div className="card-title">
+        <span>Calendário de treinos</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button className="iconbtn" onClick={()=>setViewDate(new Date(year, month-1, 1))}><ChevronLeft size={15}/></button>
+          <span style={{fontSize:12.5,fontWeight:600,textTransform:"capitalize",minWidth:112,textAlign:"center",color:"var(--text)"}}>{monthLabel}</span>
+          <button className="iconbtn" onClick={()=>setViewDate(new Date(year, month+1, 1))}><ChevronRight size={15}/></button>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:6}}>
+        {["S","T","Q","Q","S","S","D"].map((d,i)=>(
+          <div key={i} style={{textAlign:"center",fontSize:10.5,color:"var(--text-faint)",fontWeight:700}}>{d}</div>
+        ))}
+      </div>
+      <div className="calendar-grid">
+        {cells.map((d,i)=>{
+          if(d===null) return <div key={i}/>;
+          const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const trained = trainedDates.has(iso);
+          const isToday = iso === todayStr;
+          return <div key={i} className={"cal-cell"+(trained?" trained":"")+(isToday?" today":"")}>{d}</div>;
+        })}
+      </div>
+      <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:12,textAlign:"center"}}>
+        {trainedCount} {trainedCount===1?"dia treinado":"dias treinados"} em {monthLabel}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule }){
   const calPct = macroTotals.kcal/profile.caloriesTarget;
   const proPct = macroTotals.p/profile.proteinTarget;
@@ -832,6 +919,10 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
           ))}
           {!recentWorkouts.length && <div className="empty">Nenhum treino registrado ainda</div>}
         </div>
+      </div>
+
+      <div className="grid" style={{gridTemplateColumns:"1fr", marginTop:16}}>
+        <TrainingCalendar history={history}/>
       </div>
     </div>
   );
@@ -1146,14 +1237,37 @@ function CustomFoodForm({ onSave, onClose, initial }){
 /* ============================================================
    WATER TAB
 ============================================================ */
-function WaterTab({ water, setWater, today, todayWater, profile }){
+function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profile }){
   const [custom, setCustom] = useState(250);
+  const [editingId, setEditingId] = useState(null);
+  const [editVal, setEditVal] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
   function add(ml){
-    setWater(prev=> ({...prev, [today]: fmt1(Math.max(0,(prev[today]||0) + ml/1000))}));
+    if(!ml) return;
+    setWater(prev=> ({...prev, [today]: [...(prev[today]||[]), { id:uid(), ml, ts:Date.now() }]}));
   }
+  function removeEntry(id){
+    if(confirmDeleteId===id){
+      setWater(prev=> ({...prev, [today]: (prev[today]||[]).filter(e=>e.id!==id)}));
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+    }
+  }
+  function startEdit(entry){ setEditingId(entry.id); setEditVal(entry.ml); }
+  function saveEdit(id){
+    setWater(prev=> ({...prev, [today]: (prev[today]||[]).map(e=> e.id===id ? {...e, ml:Number(editVal)} : e)}));
+    setEditingId(null);
+  }
+  function clearDay(){
+    setWater(prev=>({...prev,[today]:[]}));
+  }
+
   const glasses = Math.round((profile.waterTarget*1000)/250);
   const filled = Math.round((todayWater*1000)/250);
   const pct = Math.min(100, Math.round((todayWater/profile.waterTarget)*100));
+  const sortedEntries = [...todayWaterEntries].sort((a,b)=> (b.ts||0)-(a.ts||0));
 
   return (
     <div>
@@ -1174,7 +1288,7 @@ function WaterTab({ water, setWater, today, todayWater, profile }){
             <button className="btn btn-amber" onClick={()=>add(300)}><Plus size={13}/> 300 ml</button>
             <button className="btn btn-amber" onClick={()=>add(500)}><Plus size={13}/> 500 ml</button>
             <button className="btn btn-amber" onClick={()=>add(1000)}><Plus size={13}/> 1 L</button>
-            <button className="btn btn-danger" onClick={()=>setWater(prev=>({...prev,[today]:0}))}><Trash2 size={13}/> Zerar</button>
+            <button className="btn btn-danger" onClick={clearDay}><Trash2 size={13}/> Zerar dia</button>
           </div>
           <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center"}}>
             <input className="input" type="number" value={custom} onChange={e=>setCustom(Number(e.target.value))} style={{width:110}}/>
@@ -1191,6 +1305,36 @@ function WaterTab({ water, setWater, today, todayWater, profile }){
           </div>
           <div style={{marginTop:16,fontSize:12.5,color:"var(--text-faint)"}}>Cada copo representa 250 ml. Meta diária definida em {profile.waterTarget} L no seu perfil.</div>
         </div>
+      </div>
+
+      <div className="card" style={{marginTop:16}}>
+        <div className="card-title">Registros de hoje <span className="badge badge-muted">{sortedEntries.length} lançamentos</span></div>
+        {!sortedEntries.length && <div className="empty">Nenhum registro de água hoje ainda</div>}
+        {sortedEntries.map(entry=>(
+          <div className="list-row" key={entry.id}>
+            <Droplets size={15} color="var(--text-faint)"/>
+            {editingId === entry.id ? (
+              <>
+                <input className="input" type="number" value={editVal} autoFocus style={{width:100}}
+                  onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit(entry.id)}/>
+                <span style={{fontSize:12.5,color:"var(--text-faint)"}}>ml</span>
+                <button className="btn btn-sm btn-primary" style={{marginLeft:"auto"}} onClick={()=>saveEdit(entry.id)}>Salvar</button>
+                <button className="btn btn-sm btn-ghost" onClick={()=>setEditingId(null)}>Cancelar</button>
+              </>
+            ) : (
+              <>
+                <span style={{flex:1,fontSize:13.5}}>{entry.ml} ml</span>
+                <span style={{fontSize:11.5,color:"var(--text-faint)"}}>{entry.ts ? new Date(entry.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : ""}</span>
+                <button className="iconbtn" onClick={()=>startEdit(entry)}><Edit3 size={14}/></button>
+                {confirmDeleteId===entry.id ? (
+                  <button className="btn btn-sm btn-danger" onClick={()=>removeEntry(entry.id)}>Confirmar?</button>
+                ) : (
+                  <button className="iconbtn" onClick={()=>removeEntry(entry.id)}><Trash2 size={14}/></button>
+                )}
+              </>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1239,7 +1383,7 @@ function WeeklyScheduleCard({ fichas, schedule, setSchedule }){
   );
 }
 
-function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule }){
+function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate }){
   const [activeFichaId, setActiveFichaId] = useState(fichas[0]?.id);
   const [showNewFicha, setShowNewFicha] = useState(false);
   const [showNewTreino, setShowNewTreino] = useState(false);
@@ -1282,7 +1426,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
 
   if(activeSession){
     return <WorkoutSession session={activeSession} setSession={setActiveSession} history={history} setHistory={setHistory}
-      restTimer={restTimer} setRestTimer={setRestTimer}/>;
+      restTimer={restTimer} setRestTimer={setRestTimer} celebrate={celebrate}/>;
   }
 
   if(!ficha){
@@ -1474,7 +1618,7 @@ function ExerciseForm({ onSave, onClose }){
   );
 }
 
-function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer }){
+function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate }){
   const elapsedMin = Math.round((Date.now()-session.startedAt)/60000);
 
   function toggleSet(exIdx, setIdx){
@@ -1506,6 +1650,13 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
     setHistory(prev=>[...prev, entry]);
     setSession(null);
     setRestTimer(null);
+    if(celebrate){
+      celebrate({
+        emoji: "🏆",
+        title: "Treino concluído!",
+        subtitle: `${session.treino.name} finalizado em ${duration} min, com ${Math.round(volume).toLocaleString("pt-BR")}kg de volume total. Mandou bem!`,
+      });
+    }
   }
 
   return (
