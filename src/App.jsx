@@ -8,7 +8,7 @@ import {
   Target, User, Plus, Minus, Search, X, Flame, Trophy, Check,
   ChevronRight, ChevronLeft, Play, Pause, Square, Trash2, Edit3,
   Star, Copy, Calendar as CalendarIcon, Award, Zap, ChevronDown,
-  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut
+  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut, Users
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 
@@ -276,9 +276,31 @@ const FOOD_DB_SEED = [
 
 const MUSCLE_GROUPS = ["Peito","Costas","Pernas","Ombro","Bíceps","Tríceps","Abdômen","Glúteos","Panturrilha","Cardio"];
 
-const todayISO = () => new Date().toISOString().slice(0,10);
-const daysAgoISO = (n) => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
+// IMPORTANT: uses LOCAL date components, not toISOString() (which is UTC).
+// Using UTC here was the root cause of a bug where, for users in negative UTC
+// offset timezones (e.g. Brazil, UTC-3), the "day" would roll over around
+// 21h-22h local time — hours before local midnight — making that day's diary,
+// water log, and workout history silently look empty/reset.
+const todayISO = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+};
+const daysAgoISO = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate()-n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+};
 const fmt1 = (n) => Math.round(n*10)/10;
+// Shows an empty field instead of a literal "0" for number inputs that are
+// still unset — so the user can type straight away instead of having to
+// delete a "0" first. The underlying stored value stays a real 0 either way.
+const numDisplay = (v) => (v === 0 || v === null || v === undefined || Number.isNaN(v)) ? "" : v;
 const uid = () => Math.random().toString(36).slice(2,10);
 
 /* ---- Body composition calculations ---- */
@@ -341,6 +363,19 @@ async function saveKey(userId, key, value){
 }
 async function deleteAllUserData(userId){
   try{ await supabase.from("user_data").delete().eq("user_id", userId); }catch(e){ /* noop */ }
+}
+// Every day's diary is saved under its own key ("diary:2026-07-13", etc.) —
+// this fetches all of them at once for the history browser, most recent first.
+async function loadDiaryHistory(userId){
+  try{
+    const { data, error } = await supabase.from("user_data")
+      .select("key, value")
+      .eq("user_id", userId)
+      .like("key", "diary:%")
+      .order("key", { ascending: false });
+    if(error || !data) return [];
+    return data.map(row => ({ date: row.key.slice(6), meals: row.value?.meals || [] }));
+  }catch(e){ return []; }
 }
 
 /* ---- Supabase profile row <-> app profile object mapping ---- */
@@ -486,6 +521,7 @@ const NAV = [
 export default function FitnessApp({ user }){
   const [tab, setTab] = useState("dashboard");
   const [loaded, setLoaded] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(()=>{
@@ -553,6 +589,10 @@ export default function FitnessApp({ user }){
       setGoals(g||[]);
       setSchedule(sc||{});
       setDietPlan(dp||[]);
+
+      const { data: adminRow } = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+      setIsAdmin(!!adminRow);
+
       setLoaded(true);
     })();
     // eslint-disable-next-line
@@ -694,7 +734,7 @@ export default function FitnessApp({ user }){
           </div>
           <button className="collapse-btn" onClick={()=>setSidebarOpen(false)} aria-label="Recolher menu"><ChevronsLeft size={16}/></button>
         </div>
-        {NAV.map(n=>(
+        {(isAdmin ? [...NAV, {key:"admin",label:"Pacientes",icon:Users}] : NAV).map(n=>(
           <button key={n.key} className={"navitem"+(tab===n.key?" active":"")} onClick={()=>selectTab(n.key)}>
             <n.icon size={17}/> {n.label}
           </button>
@@ -716,7 +756,7 @@ export default function FitnessApp({ user }){
 
       <main className={"main"+(sidebarOpen?"":" full")}>
         {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule}} />}
-        {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan}} />}
+        {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan, user}} />}
         {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, todayWaterEntries, profile}} />}
         {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
@@ -931,9 +971,10 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
 /* ============================================================
    DIET TAB
 ============================================================ */
-function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan }){
-  const [view, setView] = useState("today"); // today | plan
+function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan, user }){
+  const [view, setView] = useState("today"); // today | plan | history
   const [confirmUseId, setConfirmUseId] = useState(null);
+  const [historyDays, setHistoryDays] = useState(null); // null = not loaded yet
 
   function setTodayMeals(updater){
     setDiary(prev=>{
@@ -964,6 +1005,13 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
     setConfirmUseId(null);
   }
 
+  function openHistory(){
+    setView("history");
+    if(historyDays === null){
+      loadDiaryHistory(user.id).then(days => setHistoryDays(days.filter(d => d.date !== today)));
+    }
+  }
+
   return (
     <div>
       <div className="section-head">
@@ -971,6 +1019,7 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
         <div className="tabs">
           <button className={"tab-btn"+(view==="today"?" active":"")} onClick={()=>setView("today")}>Hoje</button>
           <button className={"tab-btn"+(view==="plan"?" active":"")} onClick={()=>setView("plan")}>Plano alimentar</button>
+          <button className={"tab-btn"+(view==="history"?" active":"")} onClick={openHistory}>Histórico</button>
         </div>
       </div>
 
@@ -1024,14 +1073,73 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
             </div>
           )}
         </>
-      ) : (
+      ) : view === "plan" ? (
         <>
           <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>
             Monte aqui a dieta fixa recomendada (ex: pela nutricionista). No dia a dia, se a refeição realizada bater com o plano, basta um clique em "Usar refeição planejada" — sem precisar lançar tudo de novo.
           </div>
           <MealsList meals={dietPlan} setMeals={setDietPlan} foods={foods} setFoods={setFoods} mealTotals={mealTotals}/>
         </>
+      ) : (
+        <DietHistoryView days={historyDays} foods={foods} mealTotals={mealTotals}/>
       )}
+    </div>
+  );
+}
+
+function DietHistoryView({ days, foods, mealTotals }){
+  const [openDate, setOpenDate] = useState(null);
+
+  if(days === null) return <div className="empty">Carregando histórico…</div>;
+  if(!days.length) return <div className="empty">Ainda não há dias anteriores registrados. Volte aqui depois de lançar refeições em outros dias.</div>;
+
+  return (
+    <div>
+      {days.map(day=>{
+        const allItems = day.meals.flatMap(m=>m.items);
+        const t = mealTotals(allItems);
+        const isOpen = openDate === day.date;
+        return (
+          <div className="card" key={day.date} style={{marginBottom:12}}>
+            <div className="card-title" style={{cursor:"pointer"}} onClick={()=>setOpenDate(isOpen?null:day.date)}>
+              <span style={{color:"var(--text)",fontSize:14}}>
+                {new Date(day.date+"T12:00").toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"})}
+              </span>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span className="badge badge-muted">{Math.round(t.kcal)} kcal · P{fmt1(t.p)} C{fmt1(t.c)} G{fmt1(t.f)}</span>
+                {isOpen ? <ChevronDown size={15} color="var(--text-faint)"/> : <ChevronRight size={15} color="var(--text-faint)"/>}
+              </div>
+            </div>
+            {isOpen && (
+              <div style={{marginTop:8}}>
+                {day.meals.map(meal=>{
+                  const mt = mealTotals(meal.items);
+                  return (
+                    <div key={meal.id} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid var(--border-soft)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:13,fontWeight:600}}>{meal.name}</span>
+                        <span style={{fontSize:11.5,color:"var(--text-faint)"}}>{Math.round(mt.kcal)} kcal</span>
+                      </div>
+                      {!meal.items.length && <div style={{fontSize:12,color:"var(--text-faint)"}}>Nenhum alimento lançado</div>}
+                      {meal.items.map(it=>{
+                        const food = foods.find(f=>f.id===it.foodId);
+                        if(!food) return null;
+                        const factor = it.qty/food.per;
+                        return (
+                          <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,color:"var(--text-dim)",padding:"3px 0"}}>
+                            <span>{food.name} · {it.qty}{food.unit==="g"||food.unit==="ml"?food.unit:` ${food.unit}`}</span>
+                            <span>{Math.round(food.kcal*factor)} kcal</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1086,7 +1194,7 @@ function MealsList({ meals, setMeals, foods, setFoods, mealTotals, renderExtra }
               return (
                 <div className="list-row" key={it.id}>
                   <span style={{flex:1,fontSize:13.5}}>{food.name}{food.brand?` · ${food.brand}`:""}</span>
-                  <input className="input" type="number" value={it.qty} style={{width:70}} min={0}
+                  <input className="input" type="number" value={numDisplay(it.qty)} style={{width:70}} min={0}
                     onChange={e=>setQty(meal.id, it.id, Number(e.target.value))}/>
                   <span style={{fontSize:11.5,color:"var(--text-faint)",width:70}}>{food.unit}</span>
                   <span style={{fontSize:12.5,width:130,color:"var(--text-dim)"}}>{Math.round(food.kcal*factor)} kcal · P{fmt1(food.protein*factor)}g</span>
@@ -1184,7 +1292,7 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
           <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:16}}>Base: {selected.per} {selected.unit}</div>
           <div className="field">
             <label className="flabel">Quantidade ({selected.unit})</label>
-            <input className="input" type="number" value={qty} onChange={e=>setQty(Number(e.target.value))} autoFocus/>
+            <input className="input" type="number" value={numDisplay(qty)} onChange={e=>setQty(Number(e.target.value))} autoFocus/>
           </div>
           <div className="card" style={{background:"var(--bg-elev)",marginBottom:16}}>
             {(()=>{ const factor=qty/selected.per; return (
@@ -1213,7 +1321,7 @@ function CustomFoodForm({ onSave, onClose, initial }){
     <Modal title={isEditing ? "Editar alimento" : "Alimento personalizado"} onClose={onClose}>
       <div className="field"><label className="flabel">Nome</label><input className="input" value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
       <div className="grid grid-2" style={{marginBottom:14}}>
-        <div><label className="flabel">Base</label><input className="input" type="number" value={f.per} onChange={e=>setF({...f,per:Number(e.target.value)})}/></div>
+        <div><label className="flabel">Base</label><input className="input" type="number" value={numDisplay(f.per)} onChange={e=>setF({...f,per:Number(e.target.value)})}/></div>
         <div><label className="flabel">Unidade</label>
           <select className="input" value={f.unit} onChange={e=>setF({...f,unit:e.target.value})}>
             <option value="g">g</option><option value="ml">ml</option><option value="unidade">unidade</option><option value="colher">colher</option>
@@ -1221,10 +1329,10 @@ function CustomFoodForm({ onSave, onClose, initial }){
         </div>
       </div>
       <div className="grid grid-2">
-        <div className="field"><label className="flabel">Calorias</label><input className="input" type="number" value={f.kcal} onChange={e=>setF({...f,kcal:Number(e.target.value)})}/></div>
-        <div className="field"><label className="flabel">Proteína (g)</label><input className="input" type="number" value={f.protein} onChange={e=>setF({...f,protein:Number(e.target.value)})}/></div>
-        <div className="field"><label className="flabel">Carboidrato (g)</label><input className="input" type="number" value={f.carb} onChange={e=>setF({...f,carb:Number(e.target.value)})}/></div>
-        <div className="field"><label className="flabel">Gordura (g)</label><input className="input" type="number" value={f.fat} onChange={e=>setF({...f,fat:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Calorias</label><input className="input" type="number" value={numDisplay(f.kcal)} onChange={e=>setF({...f,kcal:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Proteína (g)</label><input className="input" type="number" value={numDisplay(f.protein)} onChange={e=>setF({...f,protein:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Carboidrato (g)</label><input className="input" type="number" value={numDisplay(f.carb)} onChange={e=>setF({...f,carb:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Gordura (g)</label><input className="input" type="number" value={numDisplay(f.fat)} onChange={e=>setF({...f,fat:Number(e.target.value)})}/></div>
       </div>
       <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}}
         onClick={()=> f.name.trim() && onSave(isEditing ? f : {...f, id:"custom-"+uid(), custom:true})}>
@@ -1291,7 +1399,7 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
             <button className="btn btn-danger" onClick={clearDay}><Trash2 size={13}/> Zerar dia</button>
           </div>
           <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center"}}>
-            <input className="input" type="number" value={custom} onChange={e=>setCustom(Number(e.target.value))} style={{width:110}}/>
+            <input className="input" type="number" value={numDisplay(custom)} onChange={e=>setCustom(Number(e.target.value))} style={{width:110}}/>
             <span style={{fontSize:12.5,color:"var(--text-dim)"}}>ml</span>
             <button className="btn btn-primary" onClick={()=>add(custom)}>Adicionar</button>
           </div>
@@ -1315,7 +1423,7 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
             <Droplets size={15} color="var(--text-faint)"/>
             {editingId === entry.id ? (
               <>
-                <input className="input" type="number" value={editVal} autoFocus style={{width:100}}
+                <input className="input" type="number" value={numDisplay(editVal)} autoFocus style={{width:100}}
                   onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit(entry.id)}/>
                 <span style={{fontSize:12.5,color:"var(--text-faint)"}}>ml</span>
                 <button className="btn btn-sm btn-primary" style={{marginLeft:"auto"}} onClick={()=>saveEdit(entry.id)}>Salvar</button>
@@ -1562,19 +1670,19 @@ function EditSessionModal({ session, onSave, onClose }){
     <Modal title={`Editar sessão · ${session.treinoName}`} onClose={onClose} wide>
       <div className="field">
         <label className="flabel">Duração (min)</label>
-        <input className="input" type="number" value={duration} onChange={e=>setDuration(e.target.value)} style={{width:120}}/>
+        <input className="input" type="number" value={numDisplay(duration)} onChange={e=>setDuration(e.target.value)} style={{width:120}}/>
       </div>
       {exercises.map((e, exIdx)=>(
         <div key={exIdx} style={{marginBottom:14}}>
           <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>{e.name}</div>
           <div className="set-row" style={{color:"var(--text-faint)",fontSize:11,gridTemplateColumns:"28px 1fr 1fr 32px"}}>
-            <span></span><span>Peso (kg)</span><span>Reps</span><span></span>
+            <span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span>
           </div>
           {e.sets.map((s, setIdx)=>(
             <div className="set-row" key={setIdx} style={{gridTemplateColumns:"28px 1fr 1fr 32px"}}>
               <span className="set-num">{setIdx+1}</span>
-              <input className="input" type="number" value={s.weight} onChange={ev=>updateSet(exIdx,setIdx,"weight",Number(ev.target.value))}/>
-              <input className="input" type="number" value={s.reps} onChange={ev=>updateSet(exIdx,setIdx,"reps",Number(ev.target.value))}/>
+              <input className="input" type="number" value={numDisplay(s.weight)} onChange={ev=>updateSet(exIdx,setIdx,"weight",Number(ev.target.value))}/>
+              <input className="input" type="number" value={numDisplay(s.reps)} onChange={ev=>updateSet(exIdx,setIdx,"reps",Number(ev.target.value))}/>
               <button className="iconbtn" onClick={()=>removeSet(exIdx,setIdx)}><X size={14}/></button>
             </div>
           ))}
@@ -1607,9 +1715,9 @@ function ExerciseForm({ onSave, onClose }){
         </select>
       </div>
       <div className="grid grid-2">
-        <div className="field"><label className="flabel">Séries</label><input className="input" type="number" value={ex.sets} onChange={e=>setEx({...ex,sets:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Séries</label><input className="input" type="number" value={numDisplay(ex.sets)} onChange={e=>setEx({...ex,sets:Number(e.target.value)})}/></div>
         <div className="field"><label className="flabel">Repetições</label><input className="input" value={ex.reps} onChange={e=>setEx({...ex,reps:e.target.value})}/></div>
-        <div className="field"><label className="flabel">Descanso (s)</label><input className="input" type="number" value={ex.rest} onChange={e=>setEx({...ex,rest:Number(e.target.value)})}/></div>
+        <div className="field"><label className="flabel">Descanso (s)</label><input className="input" type="number" value={numDisplay(ex.rest)} onChange={e=>setEx({...ex,rest:Number(e.target.value)})}/></div>
       </div>
       <div className="field"><label className="flabel">Observações</label><textarea className="input" rows={2} value={ex.notes} onChange={e=>setEx({...ex,notes:e.target.value})}/></div>
       <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:14}}>A carga é registrada depois, quando você iniciar o treino — é lá que fica anotada a evolução.</div>
@@ -1681,13 +1789,13 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
               <span className="badge badge-muted">Meta: {exDef.sets}x{exDef.reps}{exDef.load ? ` · ${exDef.load}kg` : ""}</span>
             </div>
             <div className="set-row" style={{color:"var(--text-faint)",fontSize:11}}>
-              <span></span><span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span>
+              <span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span><span></span>
             </div>
             {l.sets.map((s, setIdx)=>(
               <div className="set-row" key={setIdx}>
                 <span className="set-num">{setIdx+1}</span>
-                <input className={"input"+(s.done?" set-done":"")} type="number" value={s.weight} onChange={e=>updateSetField(exIdx,setIdx,"weight",Number(e.target.value))}/>
-                <input className={"input"+(s.done?" set-done":"")} type="number" value={s.reps} onChange={e=>updateSetField(exIdx,setIdx,"reps",Number(e.target.value))}/>
+                <input className={"input"+(s.done?" set-done":"")} type="number" value={numDisplay(s.weight)} onChange={e=>updateSetField(exIdx,setIdx,"weight",Number(e.target.value))}/>
+                <input className={"input"+(s.done?" set-done":"")} type="number" value={numDisplay(s.reps)} onChange={e=>updateSetField(exIdx,setIdx,"reps",Number(e.target.value))}/>
                 <span></span>
                 <button className="iconbtn" style={{background:s.done?"var(--accent-glow)":"none",color:s.done?"var(--accent)":"var(--text-faint)"}} onClick={()=>toggleSet(exIdx,setIdx)}><Check size={16}/></button>
               </div>
@@ -1730,6 +1838,25 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
     });
     return Object.entries(weeks).sort((a,b)=>a[0]<b[0]?-1:1).slice(-10).map(([wk,v])=>({week:wk, treinos:v}));
   },[history]);
+
+  const exerciseGroupMap = useMemo(()=>{
+    const map = new Map();
+    fichas.forEach(f=>f.treinos.forEach(t=>t.exercises.forEach(e=> map.set(e.name, e.group))));
+    return map;
+  },[fichas]);
+
+  const volumeByMuscle = useMemo(()=>{
+    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+    const groups = {};
+    history.filter(h=> new Date(h.date+"T12:00") >= weekAgo).forEach(h=>{
+      h.exercises.forEach(e=>{
+        const group = exerciseGroupMap.get(e.name) || "Outro";
+        groups[group] = (groups[group]||0) + e.sets.length; // séries concluídas
+      });
+    });
+    return Object.entries(groups).map(([group,sets])=>({group, sets})).sort((a,b)=>b.sets-a.sets);
+  },[history, exerciseGroupMap]);
+  const maxMuscleSets = Math.max(1, ...volumeByMuscle.map(g=>g.sets));
 
   const exProgress = useMemo(()=>{
     if(!exName) return [];
@@ -1822,6 +1949,27 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Volume semanal por grupo muscular <span className="badge badge-muted">últimos 7 dias · séries concluídas</span></div>
+        {!volumeByMuscle.length ? (
+          <div className="empty">Nenhuma série concluída nos últimos 7 dias</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {volumeByMuscle.map(g=>(
+              <div key={g.group}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:4}}>
+                  <span style={{color:"var(--text-dim)"}}>{g.group}</span>
+                  <b>{g.sets} {g.sets===1?"série":"séries"}</b>
+                </div>
+                <div className="pbar-track">
+                  <div className="pbar-fill" style={{width:(g.sets/maxMuscleSets*100)+"%", background:"var(--accent)"}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -2079,7 +2227,7 @@ function NumField({ label, value, onChange }){
   return (
     <div className="field">
       <label className="flabel">{label}</label>
-      <input className="input" type="number" step="0.1" value={value} onChange={e=>onChange(Number(e.target.value))}/>
+      <input className="input" type="number" step="0.1" value={numDisplay(value)} onChange={e=>onChange(Number(e.target.value))}/>
     </div>
   );
 }
@@ -2276,7 +2424,7 @@ function GoalForm({ onSave, onClose, latestWeight }){
         </select>
       </div>
       {type==="lift" && <div className="field"><label className="flabel">Exercício</label><input className="input" value={exerciseName} onChange={e=>setExerciseName(e.target.value)} placeholder="Ex: Supino reto barra"/></div>}
-      <div className="field"><label className="flabel">Valor alvo</label><input className="input" type="number" value={target} onChange={e=>setTarget(e.target.value)}/></div>
+      <div className="field"><label className="flabel">Valor alvo</label><input className="input" type="number" value={numDisplay(target)} onChange={e=>setTarget(e.target.value)}/></div>
       <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={save}>Criar meta</button>
     </Modal>
   );
@@ -2321,16 +2469,16 @@ function ProfileTab({ profile, setProfile, resetAllData }){
           <div className="card-title">Dados pessoais</div>
           <div className="field"><label className="flabel">Nome</label><input className="input" value={p.name} onChange={e=>setP({...p,name:e.target.value})}/></div>
           <div className="grid grid-2">
-            <div className="field"><label className="flabel">Altura (cm)</label><input className="input" type="number" value={p.height} onChange={e=>setP({...p,height:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Peso atual (kg)</label><input className="input" type="number" value={p.weight} onChange={e=>setP({...p,weight:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Altura (cm)</label><input className="input" type="number" value={numDisplay(p.height)} onChange={e=>setP({...p,height:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Peso atual (kg)</label><input className="input" type="number" value={numDisplay(p.weight)} onChange={e=>setP({...p,weight:Number(e.target.value)})}/></div>
             <div className="field">
               <label className="flabel">Peso inicial (kg)</label>
-              <input className="input" type="number" value={p.initialWeight} onChange={e=>setP({...p,initialWeight:Number(e.target.value)})}/>
+              <input className="input" type="number" value={numDisplay(p.initialWeight)} onChange={e=>setP({...p,initialWeight:Number(e.target.value)})}/>
             </div>
             <div className="field"><label className="flabel">Sexo</label>
               <select className="input" value={p.gender} onChange={e=>setP({...p,gender:e.target.value})}><option value="M">Masculino</option><option value="F">Feminino</option></select>
             </div>
-            <div className="field"><label className="flabel">Idade</label><input className="input" type="number" value={p.age} onChange={e=>setP({...p,age:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Idade</label><input className="input" type="number" value={numDisplay(p.age)} onChange={e=>setP({...p,age:Number(e.target.value)})}/></div>
           </div>
           <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:-6,marginBottom:14}}>"Peso inicial" é o ponto de partida usado no Dashboard pra calcular quanto você já ganhou ou perdeu.</div>
           <div className="field"><label className="flabel">Objetivo</label>
@@ -2348,11 +2496,11 @@ function ProfileTab({ profile, setProfile, resetAllData }){
         <div className="card">
           <div className="card-title">Metas nutricionais e de água</div>
           <div className="grid grid-2">
-            <div className="field"><label className="flabel">Calorias alvo</label><input className="input" type="number" value={p.caloriesTarget} onChange={e=>setP({...p,caloriesTarget:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Proteína alvo (g)</label><input className="input" type="number" value={p.proteinTarget} onChange={e=>setP({...p,proteinTarget:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Carboidrato alvo (g)</label><input className="input" type="number" value={p.carbTarget} onChange={e=>setP({...p,carbTarget:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Gordura alvo (g)</label><input className="input" type="number" value={p.fatTarget} onChange={e=>setP({...p,fatTarget:Number(e.target.value)})}/></div>
-            <div className="field"><label className="flabel">Meta de água (L)</label><input className="input" type="number" step="0.5" value={p.waterTarget} onChange={e=>setP({...p,waterTarget:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Calorias alvo</label><input className="input" type="number" value={numDisplay(p.caloriesTarget)} onChange={e=>setP({...p,caloriesTarget:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Proteína alvo (g)</label><input className="input" type="number" value={numDisplay(p.proteinTarget)} onChange={e=>setP({...p,proteinTarget:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Carboidrato alvo (g)</label><input className="input" type="number" value={numDisplay(p.carbTarget)} onChange={e=>setP({...p,carbTarget:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Gordura alvo (g)</label><input className="input" type="number" value={numDisplay(p.fatTarget)} onChange={e=>setP({...p,fatTarget:Number(e.target.value)})}/></div>
+            <div className="field"><label className="flabel">Meta de água (L)</label><input className="input" type="number" step="0.5" value={numDisplay(p.waterTarget)} onChange={e=>setP({...p,waterTarget:Number(e.target.value)})}/></div>
           </div>
 
           <div className="card" style={{background:"var(--bg-elev)", marginTop:6}}>
