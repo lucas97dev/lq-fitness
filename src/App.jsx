@@ -378,6 +378,16 @@ async function loadDiaryHistory(userId){
   }catch(e){ return []; }
 }
 
+// Used by the admin panel to prescribe diet/workout for a specific patient.
+// Only works for keys the "admins" RLS policy allows writing (diet-plan, fichas) —
+// enforced server-side, not just in this function.
+async function savePatientData(patientUserId, key, value){
+  try{
+    const { error } = await supabase.from("user_data").upsert({ user_id:patientUserId, key, value, updated_at:new Date().toISOString() });
+    if(error) console.error("Erro ao salvar dado do paciente:", error.message);
+  }catch(e){ console.error("Erro ao salvar dado do paciente:", e); }
+}
+
 /* ---- Supabase profile row <-> app profile object mapping ---- */
 function dbRowToProfile(row){
   return {
@@ -761,6 +771,7 @@ export default function FitnessApp({ user }){
         {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
         {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
         {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
+        {tab==="admin" && isAdmin && <AdminTab user={user}/>}
         {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
         {tab==="profile" && <ProfileTab {...{profile, setProfile, resetAllData}} />}
       </main>
@@ -2433,6 +2444,293 @@ function GoalForm({ onSave, onClose, latestWeight }){
 /* ============================================================
    PROFILE TAB
 ============================================================ */
+/* ============================================================
+   ADMIN PANEL — Elane (and other registered admins) can view every
+   patient's evolution and prescribe diet/workout for them.
+============================================================ */
+function AdminTab({ user }){
+  const [patients, setPatients] = useState(null); // null = loading
+  const [selected, setSelected] = useState(null);
+  const [patientData, setPatientData] = useState(null);
+  const [loadingPatient, setLoadingPatient] = useState(false);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(()=>{
+    (async ()=>{
+      const { data, error } = await supabase.from("profiles").select("*").neq("id", user.id).order("name");
+      if(error){ setError(error.message); setPatients([]); return; }
+      setPatients(data || []);
+    })();
+  },[user.id]);
+
+  async function openPatient(p){
+    setSelected(p);
+    setLoadingPatient(true);
+    const [bodyRow, historyRow, dietRow, fichasRow] = await Promise.all([
+      supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","body-measurements").maybeSingle(),
+      supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","workout-history").maybeSingle(),
+      supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","diet-plan").maybeSingle(),
+      supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","fichas").maybeSingle(),
+    ]);
+    setPatientData({
+      bodyData: bodyRow.data?.value || [],
+      history: historyRow.data?.value || [],
+      dietPlan: dietRow.data?.value || [],
+      fichas: fichasRow.data?.value || [],
+    });
+    setLoadingPatient(false);
+  }
+
+  function updatePatientField(field, key, updater){
+    setPatientData(prev=>{
+      const newVal = typeof updater==="function" ? updater(prev[field]) : updater;
+      savePatientData(selected.id, key, newVal);
+      return {...prev, [field]: newVal};
+    });
+  }
+
+  if(selected){
+    return (
+      <div>
+        <div className="section-head">
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button className="iconbtn" onClick={()=>{setSelected(null);setPatientData(null);}}><ChevronLeft size={18}/></button>
+            <h2>{selected.name || "Paciente sem nome"}</h2>
+          </div>
+        </div>
+        {loadingPatient || !patientData ? <div className="empty">Carregando dados do paciente…</div> : (
+          <AdminPatientDetail
+            patient={selected}
+            data={patientData}
+            setDietPlan={(updater)=>updatePatientField("dietPlan","diet-plan",updater)}
+            setFichas={(updater)=>updatePatientField("fichas","fichas",updater)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const filtered = (patients||[]).filter(p => (p.name||"").toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div>
+      <div className="section-head"><h2>Pacientes</h2></div>
+      <div className="field" style={{position:"relative",maxWidth:340,marginBottom:18}}>
+        <Search size={15} style={{position:"absolute",left:12,top:12,color:"var(--text-faint)"}}/>
+        <input className="input" style={{paddingLeft:34}} placeholder="Buscar paciente por nome..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      </div>
+      {patients === null && <div className="empty">Carregando pacientes…</div>}
+      {error && <div style={{color:"var(--red)",fontSize:13,marginBottom:12}}>{error}</div>}
+      {patients && !patients.length && <div className="empty">Nenhum paciente cadastrado ainda. Assim que alguém criar conta no app, aparece aqui.</div>}
+      {patients && patients.length>0 && !filtered.length && <div className="empty">Nenhum paciente encontrado com esse nome.</div>}
+      <div className="grid grid-3">
+        {filtered.map(p=>(
+          <div className="card" key={p.id} style={{cursor:"pointer"}} onClick={()=>openPatient(p)}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:38,height:38,borderRadius:10,background:"var(--accent-glow)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--accent)",fontWeight:700,flexShrink:0}}>
+                {(p.name||"?").slice(0,1).toUpperCase()}
+              </div>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name || "Sem nome"}</div>
+                <div style={{fontSize:11.5,color:"var(--text-faint)"}}>{p.goal || "Objetivo não definido"}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
+  const [tab, setTab] = useState("evolucao"); // evolucao | dieta | treino
+  const { bodyData, history, dietPlan, fichas } = data;
+  const [foods] = useState(FOOD_DB_SEED);
+
+  const latest = bodyData[bodyData.length-1];
+  const weightSeries = bodyData.slice(-10).map(b=>({date:b.date.slice(5), peso:b.weight}));
+  const totalVolume = history.reduce((s,h)=>s+h.volume, 0);
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+  const weekWorkouts = history.filter(h=> new Date(h.date+"T12:00") >= weekAgo).length;
+  const recentWorkouts = [...history].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,5);
+
+  function mealTotals(items){
+    let kcal=0,p=0,c=0,f=0;
+    items.forEach(it=>{
+      const food = foods.find(x=>x.id===it.foodId); if(!food) return;
+      const factor = it.qty/food.per;
+      kcal+=food.kcal*factor; p+=food.protein*factor; c+=food.carb*factor; f+=food.fat*factor;
+    });
+    return {kcal,p,c,f};
+  }
+
+  return (
+    <div>
+      <div className="tabs" style={{marginBottom:18}}>
+        <button className={"tab-btn"+(tab==="evolucao"?" active":"")} onClick={()=>setTab("evolucao")}>Evolução</button>
+        <button className={"tab-btn"+(tab==="dieta"?" active":"")} onClick={()=>setTab("dieta")}>Prescrever dieta</button>
+        <button className={"tab-btn"+(tab==="treino"?" active":"")} onClick={()=>setTab("treino")}>Prescrever treino</button>
+      </div>
+
+      {tab==="evolucao" && (
+        <>
+          <div className="grid grid-4" style={{marginBottom:16}}>
+            <div className="card stat-card"><span className="stat-label">Peso atual</span><span className="stat-value">{latest ? latest.weight+"kg" : "—"}</span></div>
+            <div className="card stat-card"><span className="stat-label">IMC</span><span className="stat-value">{latest?.bmi ?? "—"}</span></div>
+            <div className="card stat-card"><span className="stat-label">% Gordura (JP7)</span><span className="stat-value">{latest?.bodyFatJP7 != null ? latest.bodyFatJP7+"%" : "—"}</span></div>
+            <div className="card stat-card"><span className="stat-label">Massa magra</span><span className="stat-value">{latest?.leanMassJP7 != null ? latest.leanMassJP7+"kg" : "—"}</span></div>
+          </div>
+          <div className="grid grid-4" style={{marginBottom:16}}>
+            <div className="card stat-card"><span className="stat-label">Treinos (7 dias)</span><span className="stat-value">{weekWorkouts}</span></div>
+            <div className="card stat-card"><span className="stat-label">Treinos no total</span><span className="stat-value">{history.length}</span></div>
+            <div className="card stat-card"><span className="stat-label">Volume total</span><span className="stat-value">{Math.round(totalVolume).toLocaleString("pt-BR")}kg</span></div>
+            <div className="card stat-card"><span className="stat-label">Fichas ativas</span><span className="stat-value">{fichas.length}</span></div>
+          </div>
+
+          <div className="card" style={{marginBottom:16}}>
+            <div className="card-title">Evolução do peso</div>
+            {weightSeries.length>1 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={weightSeries}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a201a" vertical={false}/>
+                  <XAxis dataKey="date" tick={{fill:"#71655a",fontSize:11}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fill:"#71655a",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
+                  <Tooltip contentStyle={{background:"#221a15",border:"1px solid #382a20",borderRadius:10,fontSize:12}}/>
+                  <Line type="monotone" dataKey="peso" stroke="var(--accent)" strokeWidth={2.5} dot={false}/>
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <div className="empty">Sem medições suficientes ainda</div>}
+          </div>
+
+          <div className="card">
+            <div className="card-title">Últimos treinos</div>
+            {recentWorkouts.map(w=>(
+              <div className="list-row" key={w.id}>
+                <Dumbbell size={15} color="var(--text-faint)"/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13.5,fontWeight:600}}>{w.treinoName}</div>
+                  <div style={{fontSize:11.5,color:"var(--text-faint)"}}>{new Date(w.date+"T12:00").toLocaleDateString("pt-BR")} · {w.duration} min</div>
+                </div>
+                <span className="badge badge-accent">{Math.round(w.volume)} kg</span>
+              </div>
+            ))}
+            {!recentWorkouts.length && <div className="empty">Nenhum treino registrado ainda</div>}
+          </div>
+        </>
+      )}
+
+      {tab==="dieta" && (
+        <>
+          <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>
+            Esse plano aparece pro paciente na aba Dieta → Plano alimentar. Ele pode usar com um clique quando seguir certinho.
+          </div>
+          <MealsList meals={dietPlan} setMeals={setDietPlan} foods={foods} setFoods={()=>{}} mealTotals={mealTotals}/>
+        </>
+      )}
+
+      {tab==="treino" && <AdminFichaEditor fichas={fichas} setFichas={setFichas}/>}
+    </div>
+  );
+}
+
+function AdminFichaEditor({ fichas, setFichas }){
+  const [activeFichaId, setActiveFichaId] = useState(fichas[0]?.id);
+  const [showNewFicha, setShowNewFicha] = useState(false);
+  const [showNewTreino, setShowNewTreino] = useState(false);
+  const [editingTreino, setEditingTreino] = useState(null);
+  const [showNewExercise, setShowNewExercise] = useState(false);
+
+  const ficha = fichas.find(f=>f.id===activeFichaId) || fichas[0];
+
+  function addFicha(name){
+    const nf = {id:uid(), name, treinos:[]};
+    setFichas(prev=>[...prev, nf]);
+    setActiveFichaId(nf.id);
+    setShowNewFicha(false);
+  }
+  function deleteFicha(id){
+    setFichas(prev=>prev.filter(f=>f.id!==id));
+  }
+  function addTreino(name){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:[...f.treinos,{id:uid(),name,exercises:[]}]}));
+    setShowNewTreino(false);
+  }
+  function deleteTreino(treinoId){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.filter(t=>t.id!==treinoId)}));
+  }
+  function addExercise(treinoId, ex){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>t.id!==treinoId?t:{...t,exercises:[...t.exercises,{...ex,id:uid()}]})}));
+    setShowNewExercise(false);
+  }
+  function deleteExercise(treinoId, exId){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>t.id!==treinoId?t:{...t,exercises:t.exercises.filter(e=>e.id!==exId)})}));
+  }
+
+  if(!ficha){
+    return (
+      <div>
+        <div className="section-head">
+          <h2 style={{fontSize:15}}>Ficha de treino do paciente</h2>
+          <button className="btn btn-sm btn-primary" onClick={()=>setShowNewFicha(true)}><Plus size={13}/> Nova ficha</button>
+        </div>
+        <div className="empty">Esse paciente ainda não tem nenhuma ficha. Crie a primeira.</div>
+        {showNewFicha && <PromptModal title="Nova ficha" placeholder="Ex: Hipertrofia, Cutting..." onSave={addFicha} onClose={()=>setShowNewFicha(false)}/>}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="section-head">
+        <h2 style={{fontSize:15}}>Ficha de treino do paciente</h2>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowNewTreino(true)}><Plus size={13}/> Novo treino</button>
+          <button className="btn btn-primary btn-sm" onClick={()=>setShowNewFicha(true)}><Plus size={13}/> Nova ficha</button>
+        </div>
+      </div>
+
+      <div className="tabs" style={{marginBottom:18}}>
+        {fichas.map(f=>(
+          <button key={f.id} className={"tab-btn"+(f.id===ficha.id?" active":"")} onClick={()=>setActiveFichaId(f.id)}>{f.name}</button>
+        ))}
+      </div>
+
+      <div style={{marginBottom:12}}>
+        <button className="btn btn-sm btn-danger" onClick={()=>deleteFicha(ficha.id)}><Trash2 size={13}/> Excluir esta ficha</button>
+      </div>
+
+      <div className="grid grid-2">
+        {ficha.treinos.map(treino=>(
+          <div className="card" key={treino.id}>
+            <div className="card-title">
+              <span style={{color:"var(--text)",fontSize:14.5}}>{treino.name}</span>
+              <button className="iconbtn" onClick={()=>deleteTreino(treino.id)}><Trash2 size={14}/></button>
+            </div>
+            {treino.exercises.map(ex=>(
+              <div className="list-row" key={ex.id}>
+                <span className="badge badge-muted" style={{minWidth:70,textAlign:"center"}}>{ex.group}</span>
+                <span style={{flex:1,fontSize:13}}>{ex.name}</span>
+                <span style={{fontSize:12,color:"var(--text-dim)"}}>{ex.sets}x{ex.reps}</span>
+                <button className="iconbtn" onClick={()=>deleteExercise(treino.id, ex.id)}><X size={13}/></button>
+              </div>
+            ))}
+            {!treino.exercises.length && <div className="empty" style={{padding:"12px 0"}}>Sem exercícios</div>}
+            <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>{setEditingTreino(treino); setShowNewExercise(true);}}><Plus size={13}/> Exercício</button>
+          </div>
+        ))}
+        {!ficha.treinos.length && <div className="empty">Nenhum treino nesta ficha ainda.</div>}
+      </div>
+
+      {showNewFicha && <PromptModal title="Nova ficha" placeholder="Ex: Hipertrofia, Cutting..." onSave={addFicha} onClose={()=>setShowNewFicha(false)}/>}
+      {showNewTreino && <PromptModal title="Novo treino" placeholder="Ex: Treino D — Ombro" onSave={addTreino} onClose={()=>setShowNewTreino(false)}/>}
+      {showNewExercise && editingTreino && (
+        <ExerciseForm onSave={(ex)=>addExercise(editingTreino.id, ex)} onClose={()=>{setShowNewExercise(false);setEditingTreino(null);}}/>
+      )}
+    </div>
+  );
+}
+
 function ProfileTab({ profile, setProfile, resetAllData }){
   const [p, setP] = useState(profile);
   const [confirmReset, setConfirmReset] = useState(false);
