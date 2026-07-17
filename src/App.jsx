@@ -23,24 +23,24 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root{
-  --bg: #15100d;
-  --bg-elev: #1c1611;
-  --card: #221a15;
-  --card-hover: #2a201a;
-  --border: #382a20;
-  --border-soft: #29201a;
-  --text: #f5ede3;
-  --text-dim: #ab9c8c;
-  --text-faint: #71655a;
-  --accent: #d9a94f;
-  --accent-dim: #8a6a2e;
-  --accent-glow: rgba(217,169,79,0.20);
-  --blue: #808f43;
-  --blue-dim: rgba(128,143,67,0.18);
-  --amber: #93334a;
-  --amber-dim: rgba(147,51,74,0.20);
-  --red: #b8492f;
-  --purple: #b06a78;
+  --bg: #f6f1e8;
+  --bg-elev: #efe7d6;
+  --card: #ffffff;
+  --card-hover: #faf6ee;
+  --border: #e4dcc9;
+  --border-soft: #ece4d2;
+  --text: #2c2419;
+  --text-dim: #7d7161;
+  --text-faint: #a89a84;
+  --accent: #b8863a;
+  --accent-dim: #8a6528;
+  --accent-glow: rgba(184,134,58,0.14);
+  --blue: #71844a;
+  --blue-dim: rgba(113,132,74,0.14);
+  --amber: #8c3350;
+  --amber-dim: rgba(140,51,80,0.13);
+  --red: #ab4530;
+  --purple: #a8677a;
 }
 *{box-sizing:border-box;}
 .fitapp{
@@ -58,7 +58,7 @@ const CSS = `
   letter-spacing:-0.01em;
 }
 .fitapp ::-webkit-scrollbar{width:8px;height:8px;}
-.fitapp ::-webkit-scrollbar-thumb{background:#232c38;border-radius:8px;}
+.fitapp ::-webkit-scrollbar-thumb{background:#e4dcc9;border-radius:8px;}
 .fitapp ::-webkit-scrollbar-track{background:transparent;}
 .fitapp button{font-family:inherit;cursor:pointer;}
 .fitapp input,.fitapp select,.fitapp textarea{font-family:inherit;}
@@ -89,11 +89,11 @@ const CSS = `
 .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 22px 10px;}
 .brand-mark{
   width:40px;height:40px;border-radius:11px;
-  background:#efe6d8;
+  background:#ffffff;
   display:flex;align-items:center;justify-content:center;
   overflow:hidden; flex-shrink:0;
-  border:1px solid rgba(217,169,79,0.35);
-  box-shadow:0 2px 10px rgba(0,0,0,0.25);
+  border:1px solid rgba(184,134,58,0.35);
+  box-shadow:0 2px 8px rgba(44,36,25,0.10);
 }
 .brand-mark img{width:100%;height:100%;object-fit:cover;}
 .brand-name{font-family:'Space Grotesk';font-weight:700;font-size:16.5px;letter-spacing:-0.02em;}
@@ -929,10 +929,10 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
                   <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35}/>
                   <stop offset="100%" stopColor="var(--accent)" stopOpacity={0}/>
                 </linearGradient></defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-                <XAxis dataKey="date" tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false}/>
-                <YAxis domain={['dataMin - 1','dataMax + 1']} tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
-                <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+                <YAxis domain={['dataMin - 1','dataMax + 1']} tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
+                <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
                 <Area type="monotone" dataKey="peso" stroke="var(--accent)" strokeWidth={2.5} fill="url(#wgrad)"/>
               </AreaChart>
             </ResponsiveContainer>
@@ -2043,10 +2043,10 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
           <div className="card-title">Peso corporal</div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={weightSeries}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-              <XAxis dataKey="date" tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
-              <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+              <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
+              <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
               <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5} dot={false}/>
             </LineChart>
           </ResponsiveContainer>
@@ -2055,10 +2055,10 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
           <div className="card-title">Percentual de gordura</div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={bfSeries}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-              <XAxis dataKey="date" tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
-              <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+              <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
+              <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
               <Line type="monotone" dataKey="value" stroke="var(--blue)" strokeWidth={2.5} dot={false}/>
             </LineChart>
           </ResponsiveContainer>
@@ -2070,10 +2070,10 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
           <div className="card-title">Volume semanal (kg)</div>
           <ResponsiveContainer width="100%" height={190}>
             <BarChart data={volumeByWeek}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-              <XAxis dataKey="week" tick={{fill:"#5c6774",fontSize:10}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={40}/>
-              <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+              <XAxis dataKey="week" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={40}/>
+              <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
               <Bar dataKey="volume" fill="var(--accent)" radius={[5,5,0,0]}/>
             </BarChart>
           </ResponsiveContainer>
@@ -2082,10 +2082,10 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
           <div className="card-title">Frequência semanal (treinos)</div>
           <ResponsiveContainer width="100%" height={190}>
             <BarChart data={freqByWeek}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-              <XAxis dataKey="week" tick={{fill:"#5c6774",fontSize:10}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={30}/>
-              <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+              <XAxis dataKey="week" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={30}/>
+              <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
               <Bar dataKey="treinos" fill="var(--blue)" radius={[5,5,0,0]}/>
             </BarChart>
           </ResponsiveContainer>
@@ -2133,10 +2133,10 @@ function EvolutionTab({ history, bodyData, diary, water, fichas }){
         {exProgress.length>1 ? (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={exProgress}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1c2530" vertical={false}/>
-              <XAxis dataKey="date" tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:"#5c6774",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
-              <Tooltip contentStyle={{background:"#141b24",border:"1px solid #232c38",borderRadius:10,fontSize:12}}/>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+              <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
+              <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
               <Line type="monotone" dataKey="carga" stroke="var(--amber)" strokeWidth={2.5} dot={{r:3}}/>
             </LineChart>
           </ResponsiveContainer>
@@ -2723,10 +2723,10 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
             {weightSeries.length>1 ? (
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={weightSeries}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a201a" vertical={false}/>
-                  <XAxis dataKey="date" tick={{fill:"#71655a",fontSize:11}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"#71655a",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
-                  <Tooltip contentStyle={{background:"#221a15",border:"1px solid #382a20",borderRadius:10,fontSize:12}}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                  <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
+                  <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
                   <Line type="monotone" dataKey="peso" stroke="var(--accent)" strokeWidth={2.5} dot={false}/>
                 </LineChart>
               </ResponsiveContainer>
