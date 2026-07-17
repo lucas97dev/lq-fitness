@@ -31,7 +31,7 @@ function Root(){
 
   if(session === undefined){
     return (
-      <div style={{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#15100d", color:"#ab9c8c", fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <div style={{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#f6f1e8", color:"#7d7161", fontFamily:"'Inter',system-ui,sans-serif"}}>
         Carregando…
       </div>
     );
