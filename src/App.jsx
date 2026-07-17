@@ -1508,6 +1508,9 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
   const [showNewTreino, setShowNewTreino] = useState(false);
   const [editingTreino, setEditingTreino] = useState(null); // treino object for exercise editing
   const [showNewExercise, setShowNewExercise] = useState(false);
+  const [renamingFicha, setRenamingFicha] = useState(false);
+  const [renamingTreino, setRenamingTreino] = useState(null);
+  const [pendingStart, setPendingStart] = useState(null); // treino awaiting the progression-suggestion prompt
 
   const ficha = fichas.find(f=>f.id===activeFichaId) || fichas[0];
 
@@ -1521,12 +1524,36 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
     setFichas(prev=>prev.filter(f=>f.id!==id));
     if(activeFichaId===id) setActiveFichaId(fichas[0]?.id);
   }
+  function renameFicha(id, name){
+    setFichas(prev=>prev.map(f=>f.id!==id?f:{...f,name}));
+    setRenamingFicha(false);
+  }
+  function duplicateFicha(id){
+    const orig = fichas.find(f=>f.id===id);
+    if(!orig) return;
+    const copy = {
+      id:uid(), name: orig.name+" (cópia)",
+      treinos: orig.treinos.map(t=>({...t, id:uid(), exercises: t.exercises.map(e=>({...e, id:uid()}))})),
+    };
+    setFichas(prev=>[...prev, copy]);
+    setActiveFichaId(copy.id);
+  }
   function addTreino(name){
     setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:[...f.treinos,{id:uid(),name,exercises:[]}]}));
     setShowNewTreino(false);
   }
   function deleteTreino(treinoId){
     setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.filter(t=>t.id!==treinoId)}));
+  }
+  function renameTreino(treinoId, name){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>t.id!==treinoId?t:{...t,name})}));
+    setRenamingTreino(null);
+  }
+  function duplicateTreino(treinoId){
+    const orig = ficha.treinos.find(t=>t.id===treinoId);
+    if(!orig) return;
+    const copy = {...orig, id:uid(), name: orig.name+" (cópia)", exercises: orig.exercises.map(e=>({...e, id:uid()}))};
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:[...f.treinos, copy]}));
   }
   function addExercise(treinoId, ex){
     setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>t.id!==treinoId?t:{...t,exercises:[...t.exercises,{...ex,id:uid()}]})}));
@@ -1535,12 +1562,44 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
   function deleteExercise(treinoId, exId){
     setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>t.id!==treinoId?t:{...t,exercises:t.exercises.filter(e=>e.id!==exId)})}));
   }
+  function duplicateExercise(treinoId, exId){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>{
+      if(t.id!==treinoId) return t;
+      const orig = t.exercises.find(e=>e.id===exId);
+      if(!orig) return t;
+      return {...t, exercises:[...t.exercises, {...orig, id:uid()}]};
+    })}));
+  }
 
-  function startSession(treino){
+  function suggestionFor(exName){
+    const lastSession = [...history].filter(h=>h.exercises.some(e=>e.name===exName)).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    if(!lastSession) return null;
+    const ex = lastSession.exercises.find(e=>e.name===exName);
+    if(!ex || !ex.sets.length) return null;
+    const top = ex.sets.reduce((a,b)=> b.weight>a.weight?b:a);
+    if(top.reps>=10) return { weight: fmt1(top.weight*1.025), reps: top.reps, prevWeight: top.weight };
+    return { weight: top.weight, reps: top.reps, prevWeight: top.weight };
+  }
+
+  function beginSession(treino, useSuggestions){
     setActiveSession({
       treino, ficha, startedAt: Date.now(),
-      log: treino.exercises.map(ex=>({exId:ex.id, exName:ex.name, sets: Array.from({length:ex.sets}).map(()=>({weight:ex.load, reps:0, done:false}))}))
+      log: treino.exercises.map(ex=>{
+        const sug = useSuggestions ? suggestionFor(ex.name) : null;
+        const startWeight = sug ? sug.weight : ex.load;
+        return { exId:ex.id, exName:ex.name, sets: Array.from({length:ex.sets}).map(()=>({weight:startWeight, reps:0, done:false})) };
+      })
     });
+    setPendingStart(null);
+  }
+
+  function startSession(treino){
+    const hasSuggestions = treino.exercises.some(ex => suggestionFor(ex.name));
+    if(hasSuggestions){
+      setPendingStart(treino);
+    } else {
+      beginSession(treino, false);
+    }
   }
 
   if(activeSession){
@@ -1558,6 +1617,14 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
     );
   }
 
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+  const weekHistory = history.filter(h=> new Date(h.date+"T12:00") >= weekAgo);
+  const weekVolume = weekHistory.reduce((s,h)=>s+h.volume,0);
+  const lastWorkout = [...history].sort((a,b)=>b.date.localeCompare(a.date))[0];
+  let streak=0, d=new Date();
+  const trainedSet = new Set(history.map(h=>h.date));
+  while(true){ const iso=d.toISOString().slice(0,10); if(trainedSet.has(iso)){streak++; d.setDate(d.getDate()-1);} else break; }
+
   return (
     <div>
       <div className="section-head">
@@ -1568,10 +1635,27 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
         </div>
       </div>
 
-      <div className="tabs" style={{marginBottom:18}}>
+      <div className="grid grid-4" style={{marginBottom:18}}>
+        <div className="card stat-card"><span className="stat-label">Sequência</span><span className="stat-value">{streak} 🔥</span></div>
+        <div className="card stat-card"><span className="stat-label">Treinos (7 dias)</span><span className="stat-value">{weekHistory.length}</span></div>
+        <div className="card stat-card"><span className="stat-label">Volume (7 dias)</span><span className="stat-value">{Math.round(weekVolume).toLocaleString("pt-BR")}kg</span></div>
+        <div className="card stat-card">
+          <span className="stat-label">Último treino</span>
+          <span className="stat-value" style={{fontSize:15}}>{lastWorkout ? lastWorkout.treinoName : "—"}</span>
+          <span className="stat-sub">{lastWorkout ? new Date(lastWorkout.date+"T12:00").toLocaleDateString("pt-BR") : "Nenhum ainda"}</span>
+        </div>
+      </div>
+
+      <div className="tabs" style={{marginBottom:12}}>
         {fichas.map(f=>(
           <button key={f.id} className={"tab-btn"+(f.id===ficha.id?" active":"")} onClick={()=>setActiveFichaId(f.id)}>{f.name}</button>
         ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:18}}>
+        <button className="btn btn-sm btn-ghost" onClick={()=>setRenamingFicha(true)}><Edit3 size={13}/> Renomear ficha</button>
+        <button className="btn btn-sm btn-ghost" onClick={()=>duplicateFicha(ficha.id)}><Copy size={13}/> Duplicar ficha</button>
+        <button className="btn btn-sm btn-danger" onClick={()=>deleteFicha(ficha.id)}><Trash2 size={13}/> Excluir ficha</button>
       </div>
 
       <WeeklyScheduleCard fichas={fichas} schedule={schedule} setSchedule={setSchedule}/>
@@ -1583,14 +1667,19 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
             <div className="card" key={treino.id}>
               <div className="card-title">
                 <span style={{color:"var(--text)",fontSize:14.5}}>{treino.name}</span>
-                <button className="iconbtn" onClick={()=>deleteTreino(treino.id)}><Trash2 size={14}/></button>
+                <div style={{display:"flex",gap:2}}>
+                  <button className="iconbtn" title="Renomear" onClick={()=>setRenamingTreino(treino)}><Edit3 size={14}/></button>
+                  <button className="iconbtn" title="Duplicar" onClick={()=>duplicateTreino(treino.id)}><Copy size={14}/></button>
+                  <button className="iconbtn" title="Excluir" onClick={()=>deleteTreino(treino.id)}><Trash2 size={14}/></button>
+                </div>
               </div>
               {treino.exercises.map(ex=>(
                 <div className="list-row" key={ex.id}>
                   <span className="badge badge-muted" style={{minWidth:70,textAlign:"center"}}>{ex.group}</span>
                   <span style={{flex:1,fontSize:13}}>{ex.name}</span>
                   <span style={{fontSize:12,color:"var(--text-dim)"}}>{ex.sets}x{ex.reps}{ex.load ? ` · ${ex.load}kg` : ""}</span>
-                  <button className="iconbtn" onClick={()=>deleteExercise(treino.id, ex.id)}><X size={13}/></button>
+                  <button className="iconbtn" title="Duplicar exercício" onClick={()=>duplicateExercise(treino.id, ex.id)}><Copy size={13}/></button>
+                  <button className="iconbtn" title="Excluir" onClick={()=>deleteExercise(treino.id, ex.id)}><X size={13}/></button>
                 </div>
               ))}
               {!treino.exercises.length && <div className="empty" style={{padding:"12px 0"}}>Sem exercícios</div>}
@@ -1609,8 +1698,31 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
 
       {showNewFicha && <PromptModal title="Nova ficha" placeholder="Ex: Hipertrofia, Cutting..." onSave={addFicha} onClose={()=>setShowNewFicha(false)}/>}
       {showNewTreino && <PromptModal title="Novo treino" placeholder="Ex: Treino D — Ombro" onSave={addTreino} onClose={()=>setShowNewTreino(false)}/>}
+      {renamingFicha && <PromptModal title="Renomear ficha" placeholder={ficha.name} onSave={(name)=>renameFicha(ficha.id,name)} onClose={()=>setRenamingFicha(false)}/>}
+      {renamingTreino && <PromptModal title="Renomear treino" placeholder={renamingTreino.name} onSave={(name)=>renameTreino(renamingTreino.id,name)} onClose={()=>setRenamingTreino(null)}/>}
       {showNewExercise && editingTreino && (
         <ExerciseForm onSave={(ex)=>addExercise(editingTreino.id, ex)} onClose={()=>{setShowNewExercise(false);setEditingTreino(null);}}/>
+      )}
+      {pendingStart && (
+        <Modal title="Sugestão de progressão" onClose={()=>setPendingStart(null)}>
+          <div style={{fontSize:13,color:"var(--text-dim)",marginBottom:16}}>
+            Na última vez você completou bem estas séries. Quer começar já com a carga sugerida?
+          </div>
+          {pendingStart.exercises.map(ex=>{
+            const sug = suggestionFor(ex.name);
+            if(!sug) return null;
+            return (
+              <div key={ex.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"8px 0",borderBottom:"1px solid var(--border-soft)"}}>
+                <span>{ex.name}</span>
+                <span style={{color:"var(--accent)",fontWeight:700}}>{sug.prevWeight}kg → {sug.weight}kg</span>
+              </div>
+            );
+          })}
+          <div style={{display:"flex",gap:10,marginTop:18}}>
+            <button className="btn btn-ghost" style={{flex:1,justifyContent:"center"}} onClick={()=>beginSession(pendingStart, false)}>Começar com valores da ficha</button>
+            <button className="btn btn-primary" style={{flex:1,justifyContent:"center"}} onClick={()=>beginSession(pendingStart, true)}>Usar sugestões</button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1740,6 +1852,12 @@ function ExerciseForm({ onSave, onClose }){
 function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate }){
   const elapsedMin = Math.round((Date.now()-session.startedAt)/60000);
 
+  function bestEverWeight(exName){
+    let best = 0;
+    history.forEach(h=> h.exercises.forEach(e=>{ if(e.name===exName) e.sets.forEach(s=>{ if(s.weight>best) best=s.weight; }); }));
+    return best;
+  }
+
   function toggleSet(exIdx, setIdx){
     setSession(prev=>{
       const log = prev.log.map((l,i)=> i!==exIdx ? l : {...l, sets: l.sets.map((s,j)=> j!==setIdx ? s : {...s, done: !s.done})});
@@ -1749,6 +1867,18 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
     if(!set.done){
       const restSec = session.treino.exercises[exIdx].rest || 60;
       setRestTimer({endTime: Date.now() + restSec*1000, total: restSec});
+      // check for a new personal record on this exercise
+      if(celebrate && set.weight > 0){
+        const exName = session.log[exIdx].exName;
+        const prevBest = bestEverWeight(exName);
+        if(set.weight > prevBest){
+          celebrate({
+            emoji: "🏆",
+            title: "Novo recorde pessoal!",
+            subtitle: `${exName}: ${set.weight}kg — sua maior carga de sempre nesse exercício!`,
+          });
+        }
+      }
     }
   }
   function updateSetField(exIdx, setIdx, field, val){
