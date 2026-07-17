@@ -278,6 +278,64 @@ const FOOD_DB_SEED = [
 
 const MUSCLE_GROUPS = ["Peito","Costas","Pernas","Ombro","Bíceps","Tríceps","Abdômen","Glúteos","Panturrilha","Cardio"];
 
+const EXERCISE_LIBRARY = [
+  // Peito
+  {name:"Supino reto barra", group:"Peito"}, {name:"Supino inclinado barra", group:"Peito"},
+  {name:"Supino reto halteres", group:"Peito"}, {name:"Supino inclinado halteres", group:"Peito"},
+  {name:"Crucifixo reto halteres", group:"Peito"}, {name:"Crucifixo inclinado halteres", group:"Peito"},
+  {name:"Crossover (cabo)", group:"Peito"}, {name:"Peck deck (voador)", group:"Peito"},
+  {name:"Flexão de braço", group:"Peito"}, {name:"Supino declinado barra", group:"Peito"},
+  {name:"Pullover halteres", group:"Peito"},
+  // Costas
+  {name:"Puxada frontal (pulley)", group:"Costas"}, {name:"Puxada supinada", group:"Costas"},
+  {name:"Remada curvada barra", group:"Costas"}, {name:"Remada baixa (cabo)", group:"Costas"},
+  {name:"Remada unilateral halter (serrote)", group:"Costas"}, {name:"Remada cavalinho (T-bar)", group:"Costas"},
+  {name:"Barra fixa (pull-up)", group:"Costas"}, {name:"Levantamento terra", group:"Costas"},
+  {name:"Hiperextensão lombar", group:"Costas"}, {name:"Pulldown com corda", group:"Costas"},
+  // Pernas
+  {name:"Agachamento livre", group:"Pernas"}, {name:"Agachamento smith", group:"Pernas"},
+  {name:"Leg press 45°", group:"Pernas"}, {name:"Cadeira extensora", group:"Pernas"},
+  {name:"Cadeira flexora", group:"Pernas"}, {name:"Mesa flexora", group:"Pernas"},
+  {name:"Agachamento búlgaro", group:"Pernas"}, {name:"Avanço (afundo)", group:"Pernas"},
+  {name:"Stiff barra", group:"Pernas"}, {name:"Stiff halteres", group:"Pernas"},
+  {name:"Hack machine", group:"Pernas"}, {name:"Cadeira adutora", group:"Pernas"},
+  {name:"Cadeira abdutora", group:"Pernas"},
+  // Ombro
+  {name:"Desenvolvimento militar barra", group:"Ombro"}, {name:"Desenvolvimento halteres", group:"Ombro"},
+  {name:"Desenvolvimento máquina", group:"Ombro"}, {name:"Elevação lateral halteres", group:"Ombro"},
+  {name:"Elevação frontal halteres", group:"Ombro"}, {name:"Elevação lateral cabo", group:"Ombro"},
+  {name:"Crucifixo invertido (posterior)", group:"Ombro"}, {name:"Remada alta barra", group:"Ombro"},
+  {name:"Encolhimento de ombros (trapézio)", group:"Ombro"},
+  // Bíceps
+  {name:"Rosca direta barra", group:"Bíceps"}, {name:"Rosca direta halteres", group:"Bíceps"},
+  {name:"Rosca alternada halteres", group:"Bíceps"}, {name:"Rosca martelo", group:"Bíceps"},
+  {name:"Rosca scott", group:"Bíceps"}, {name:"Rosca concentrada", group:"Bíceps"},
+  {name:"Rosca cabo (polia baixa)", group:"Bíceps"},
+  // Tríceps
+  {name:"Tríceps corda (polia)", group:"Tríceps"}, {name:"Tríceps barra (polia)", group:"Tríceps"},
+  {name:"Tríceps testa barra", group:"Tríceps"}, {name:"Tríceps francês halter", group:"Tríceps"},
+  {name:"Tríceps coice (kickback)", group:"Tríceps"}, {name:"Mergulho (dips) no banco", group:"Tríceps"},
+  {name:"Supino fechado (pegada fechada)", group:"Tríceps"},
+  // Abdômen
+  {name:"Abdominal supra", group:"Abdômen"}, {name:"Abdominal infra", group:"Abdômen"},
+  {name:"Prancha isométrica", group:"Abdômen"}, {name:"Prancha lateral", group:"Abdômen"},
+  {name:"Elevação de pernas", group:"Abdômen"}, {name:"Abdominal na polia (crunch cabo)", group:"Abdômen"},
+  {name:"Abdominal bicicleta", group:"Abdômen"}, {name:"Rotação de tronco (russian twist)", group:"Abdômen"},
+  // Glúteos
+  {name:"Elevação de quadril (hip thrust)", group:"Glúteos"}, {name:"Glúteo na polia (coice)", group:"Glúteos"},
+  {name:"Cadeira glúteo (glute machine)", group:"Glúteos"}, {name:"Abdução de quadril", group:"Glúteos"},
+  {name:"Ponte de glúteo", group:"Glúteos"},
+  // Panturrilha
+  {name:"Panturrilha em pé", group:"Panturrilha"}, {name:"Panturrilha sentado", group:"Panturrilha"},
+  {name:"Panturrilha no leg press", group:"Panturrilha"},
+  // Cardio
+  {name:"Esteira (corrida)", group:"Cardio"}, {name:"Esteira (caminhada inclinada)", group:"Cardio"},
+  {name:"Bicicleta ergométrica", group:"Cardio"}, {name:"Elíptico", group:"Cardio"},
+  {name:"Escada (stairmaster)", group:"Cardio"}, {name:"Pular corda", group:"Cardio"},
+  {name:"Remo (remada cardio)", group:"Cardio"},
+];
+
+
 // IMPORTANT: uses LOCAL date components, not toISOString() (which is UTC).
 // Using UTC here was the root cause of a bug where, for users in negative UTC
 // offset timezones (e.g. Brazil, UTC-3), the "day" would roll over around
@@ -1832,11 +1890,59 @@ function PromptModal({ title, placeholder, onSave, onClose }){
   );
 }
 
+function ExercisePicker({ onPick, onClose }){
+  const [q, setQ] = useState("");
+  const [groupFilter, setGroupFilter] = useState("Todos");
+
+  const filtered = EXERCISE_LIBRARY.filter(e=>
+    e.name.toLowerCase().includes(q.toLowerCase()) &&
+    (groupFilter==="Todos" || e.group===groupFilter)
+  );
+
+  return (
+    <Modal title="Biblioteca de exercícios" onClose={onClose} wide>
+      <div className="field" style={{position:"relative"}}>
+        <Search size={15} style={{position:"absolute",left:12,top:12,color:"var(--text-faint)"}}/>
+        <input className="input" style={{paddingLeft:34}} autoFocus placeholder="Buscar exercício (ex: supino, agachamento...)"
+          value={q} onChange={e=>setQ(e.target.value)}/>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        <button className={"chip"+(groupFilter==="Todos"?" active":"")} onClick={()=>setGroupFilter("Todos")}>Todos</button>
+        {MUSCLE_GROUPS.map(g=>(
+          <button key={g} className={"chip"+(groupFilter===g?" active":"")} onClick={()=>setGroupFilter(g)}>{g}</button>
+        ))}
+      </div>
+      <div style={{maxHeight:340,overflowY:"auto"}}>
+        {filtered.map((e,i)=>(
+          <div className="food-search-item" key={i} onClick={()=>onPick(e)}>
+            <div style={{fontSize:13.5,fontWeight:600}}>{e.name}</div>
+            <span className="badge badge-muted">{e.group}</span>
+          </div>
+        ))}
+        {!filtered.length && <div className="empty">Nenhum exercício encontrado — você pode digitar o nome manualmente no formulário.</div>}
+      </div>
+    </Modal>
+  );
+}
+
 function ExerciseForm({ onSave, onClose }){
   const [ex, setEx] = useState({name:"",group:MUSCLE_GROUPS[0],sets:3,reps:"10-12",load:0,rest:60,notes:""});
+  const [showLibrary, setShowLibrary] = useState(false);
+
+  function pickFromLibrary(picked){
+    setEx(prev=>({...prev, name:picked.name, group:picked.group}));
+    setShowLibrary(false);
+  }
+
   return (
     <Modal title="Novo exercício" onClose={onClose}>
-      <div className="field"><label className="flabel">Nome do exercício</label><input className="input" value={ex.name} onChange={e=>setEx({...ex,name:e.target.value})} autoFocus/></div>
+      <div className="field">
+        <label className="flabel">Nome do exercício</label>
+        <div style={{display:"flex",gap:8}}>
+          <input className="input" value={ex.name} onChange={e=>setEx({...ex,name:e.target.value})} placeholder="Digite ou escolha da biblioteca" autoFocus/>
+          <button type="button" className="btn btn-sm btn-ghost" style={{flexShrink:0}} onClick={()=>setShowLibrary(true)}><Search size={13}/> Biblioteca</button>
+        </div>
+      </div>
       <div className="field"><label className="flabel">Grupo muscular</label>
         <select className="input" value={ex.group} onChange={e=>setEx({...ex,group:e.target.value})}>
           {MUSCLE_GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
@@ -1850,6 +1956,7 @@ function ExerciseForm({ onSave, onClose }){
       <div className="field"><label className="flabel">Observações</label><textarea className="input" rows={2} value={ex.notes} onChange={e=>setEx({...ex,notes:e.target.value})}/></div>
       <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:14}}>A carga é registrada depois, quando você iniciar o treino — é lá que fica anotada a evolução.</div>
       <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={()=>ex.name.trim()&&onSave(ex)}>Adicionar exercício</button>
+      {showLibrary && <ExercisePicker onPick={pickFromLibrary} onClose={()=>setShowLibrary(false)}/>}
     </Modal>
   );
 }
