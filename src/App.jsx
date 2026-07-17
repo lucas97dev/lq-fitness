@@ -237,7 +237,7 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 
 .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
 .cal-cell{aspect-ratio:1;border-radius:9px;border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);position:relative;background:var(--bg-elev);}
-.cal-cell.trained{background:var(--accent-glow);border-color:rgba(217,169,79,0.4);color:var(--accent);font-weight:700;}
+.cal-cell.trained{background:rgba(74,124,63,0.14);border-color:rgba(74,124,63,0.45);color:#3d6633;font-weight:700;}
 .cal-cell.today{outline:1.5px solid var(--text);}
 .cal-dot{position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--blue);}
 
