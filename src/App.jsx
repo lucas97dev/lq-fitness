@@ -236,9 +236,11 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 .pr-tag{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#0a1a12;background:linear-gradient(135deg,#ffd76b,#ffb648);padding:3px 9px;border-radius:7px;}
 
 .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
-.cal-cell{aspect-ratio:1;border-radius:9px;border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);position:relative;background:var(--bg-elev);}
-.cal-cell.trained{background:rgba(74,124,63,0.14);border-color:rgba(74,124,63,0.45);color:#3d6633;font-weight:700;}
+.cal-cell{aspect-ratio:1;border-radius:9px;border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);position:relative;background:var(--card);}
+.cal-cell.trained{background:#dcefd5;border-color:#7fb56d;color:#2f5c26;font-weight:700;}
 .cal-cell.today{outline:1.5px solid var(--text);}
+.cal-legend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);}
+.cal-legend-dot{width:9px;height:9px;border-radius:3px;background:#dcefd5;border:1px solid #7fb56d;}
 .cal-dot{position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--blue);}
 
 @media(max-width:900px){
@@ -838,8 +840,11 @@ function TrainingCalendar({ history }){
           return <div key={i} className={"cal-cell"+(trained?" trained":"")+(isToday?" today":"")}>{d}</div>;
         })}
       </div>
-      <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:12,textAlign:"center"}}>
-        {trainedCount} {trainedCount===1?"dia treinado":"dias treinados"} em {monthLabel}
+      <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:16,marginTop:12,flexWrap:"wrap"}}>
+        <div className="cal-legend"><span className="cal-legend-dot"/> dia treinado</div>
+        <div style={{fontSize:11.5,color:"var(--text-faint)"}}>
+          {trainedCount} {trainedCount===1?"dia treinado":"dias treinados"} em {monthLabel}
+        </div>
       </div>
     </div>
   );
