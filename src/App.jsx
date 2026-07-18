@@ -8,7 +8,7 @@ import {
   Target, User, Plus, Minus, Search, X, Flame, Trophy, Check,
   ChevronRight, ChevronLeft, Play, Pause, Square, Trash2, Edit3,
   Star, Copy, Calendar as CalendarIcon, Award, Zap, ChevronDown,
-  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut, Users
+  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut, Users, Download
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 
@@ -245,6 +245,16 @@ label.flabel{font-size:11.5px;font-weight:700;color:var(--text-dim);text-transfo
 
 @media(max-width:900px){
   .greeting{font-size:20px;}
+}
+
+/* ---- Print / PDF export (admin evolution report) ---- */
+@media print{
+  body *{ visibility:hidden; }
+  .admin-print-report, .admin-print-report *{ visibility:visible; }
+  .admin-print-report{ position:absolute; left:0; top:0; width:100%; padding:20px; }
+  .no-print{ display:none !important; }
+  .card{ break-inside:avoid; border:1px solid #ddd; }
+  .fitapp{ background:#fff; }
 }
 `;
 
@@ -2709,17 +2719,19 @@ function AdminTab({ user }){
   async function openPatient(p){
     setSelected(p);
     setLoadingPatient(true);
-    const [bodyRow, historyRow, dietRow, fichasRow] = await Promise.all([
+    const [bodyRow, historyRow, dietRow, fichasRow, diaryDays] = await Promise.all([
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","body-measurements").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","workout-history").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","diet-plan").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","fichas").maybeSingle(),
+      loadDiaryHistory(p.id),
     ]);
     setPatientData({
       bodyData: bodyRow.data?.value || [],
       history: historyRow.data?.value || [],
       dietPlan: dietRow.data?.value || [],
       fichas: fichasRow.data?.value || [],
+      diaryDays: diaryDays || [],
     });
     setLoadingPatient(false);
   }
@@ -2787,15 +2799,51 @@ function AdminTab({ user }){
 
 function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
   const [tab, setTab] = useState("evolucao"); // evolucao | dieta | treino
-  const { bodyData, history, dietPlan, fichas } = data;
+  const { bodyData, history, dietPlan, fichas, diaryDays } = data;
   const [foods] = useState(FOOD_DB_SEED);
 
   const latest = bodyData[bodyData.length-1];
-  const weightSeries = bodyData.slice(-10).map(b=>({date:b.date.slice(5), peso:b.weight}));
+  const weightSeries = bodyData.slice(-12).map(b=>({date:b.date.slice(5), peso:b.weight}));
+  const bodyFatSeries = bodyData.filter(b=>b.bodyFatJP7!=null).slice(-12).map(b=>({date:b.date.slice(5), pct:b.bodyFatJP7}));
   const totalVolume = history.reduce((s,h)=>s+h.volume, 0);
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
   const weekWorkouts = history.filter(h=> new Date(h.date+"T12:00") >= weekAgo).length;
   const recentWorkouts = [...history].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,5);
+
+  const volumeByWeek = useMemo(()=>{
+    const weeks = {};
+    history.forEach(h=>{ const wk = getWeekLabel(new Date(h.date+"T12:00")); weeks[wk]=(weeks[wk]||0)+h.volume; });
+    return Object.entries(weeks).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8).map(([wk,v])=>({week:wk, volume:Math.round(v)}));
+  },[history]);
+  const freqByWeek = useMemo(()=>{
+    const weeks = {};
+    history.forEach(h=>{ const wk = getWeekLabel(new Date(h.date+"T12:00")); weeks[wk]=(weeks[wk]||0)+1; });
+    return Object.entries(weeks).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8).map(([wk,v])=>({week:wk, treinos:v}));
+  },[history]);
+
+  const personalRecords = useMemo(()=>{
+    const map = new Map(); // name -> best weight/reps/volume
+    history.forEach(h=> h.exercises.forEach(e=>{
+      e.sets.forEach(s=>{
+        const cur = map.get(e.name) || {name:e.name, bestWeight:0, bestReps:0, bestVolume:0};
+        if(s.weight>cur.bestWeight) cur.bestWeight = s.weight;
+        if(s.reps>cur.bestReps) cur.bestReps = s.reps;
+        const vol = s.weight*s.reps;
+        if(vol>cur.bestVolume) cur.bestVolume = vol;
+        map.set(e.name, cur);
+      });
+    }));
+    return Array.from(map.values()).sort((a,b)=>b.bestWeight-a.bestWeight).slice(0,6);
+  },[history]);
+
+  const dietAdherence = useMemo(()=>{
+    const last30 = (diaryDays||[]).filter(d=>{
+      const diff = (Date.now() - new Date(d.date+"T12:00").getTime())/86400000;
+      return diff <= 30;
+    });
+    const daysWithFood = last30.filter(d => d.meals.some(m=>m.items.length>0)).length;
+    return { daysWithFood, totalDays: last30.length };
+  },[diaryDays]);
 
   function mealTotals(items){
     let kcal=0,p=0,c=0,f=0;
@@ -2807,16 +2855,28 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
     return {kcal,p,c,f};
   }
 
+  function exportPDF(){
+    window.print();
+  }
+
   return (
     <div>
-      <div className="tabs" style={{marginBottom:18}}>
+      <div className="tabs no-print" style={{marginBottom:18}}>
         <button className={"tab-btn"+(tab==="evolucao"?" active":"")} onClick={()=>setTab("evolucao")}>Evolução</button>
         <button className={"tab-btn"+(tab==="dieta"?" active":"")} onClick={()=>setTab("dieta")}>Prescrever dieta</button>
         <button className={"tab-btn"+(tab==="treino"?" active":"")} onClick={()=>setTab("treino")}>Prescrever treino</button>
       </div>
 
       {tab==="evolucao" && (
-        <>
+        <div className="admin-print-report">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}} className="print-header">
+            <div>
+              <div style={{fontSize:16,fontWeight:700}}>Relatório de evolução — {patient.name || "Paciente"}</div>
+              <div style={{fontSize:11.5,color:"var(--text-faint)"}}>Gerado em {new Date().toLocaleDateString("pt-BR")} · EQ Fitness</div>
+            </div>
+            <button className="btn btn-sm btn-primary no-print" onClick={exportPDF}><Download size={13}/> Exportar / Imprimir PDF</button>
+          </div>
+
           <div className="grid grid-4" style={{marginBottom:16}}>
             <div className="card stat-card"><span className="stat-label">Peso atual</span><span className="stat-value">{latest ? latest.weight+"kg" : "—"}</span></div>
             <div className="card stat-card"><span className="stat-label">IMC</span><span className="stat-value">{latest?.bmi ?? "—"}</span></div>
@@ -2827,22 +2887,84 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
             <div className="card stat-card"><span className="stat-label">Treinos (7 dias)</span><span className="stat-value">{weekWorkouts}</span></div>
             <div className="card stat-card"><span className="stat-label">Treinos no total</span><span className="stat-value">{history.length}</span></div>
             <div className="card stat-card"><span className="stat-label">Volume total</span><span className="stat-value">{Math.round(totalVolume).toLocaleString("pt-BR")}kg</span></div>
-            <div className="card stat-card"><span className="stat-label">Fichas ativas</span><span className="stat-value">{fichas.length}</span></div>
+            <div className="card stat-card">
+              <span className="stat-label">Aderência à dieta (30 dias)</span>
+              <span className="stat-value">{dietAdherence.totalDays ? Math.round(dietAdherence.daysWithFood/dietAdherence.totalDays*100)+"%" : "—"}</span>
+              <span className="stat-sub">{dietAdherence.daysWithFood} de {dietAdherence.totalDays} dias com refeições lançadas</span>
+            </div>
+          </div>
+
+          <div className="grid grid-2" style={{marginBottom:16}}>
+            <div className="card">
+              <div className="card-title">Evolução do peso</div>
+              {weightSeries.length>1 ? (
+                <ResponsiveContainer width="100%" height={190}>
+                  <LineChart data={weightSeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                    <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
+                    <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
+                    <Line type="monotone" dataKey="peso" stroke="var(--accent)" strokeWidth={2.5} dot={false}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <div className="empty">Sem medições suficientes ainda</div>}
+            </div>
+            <div className="card">
+              <div className="card-title">Evolução do % de gordura</div>
+              {bodyFatSeries.length>1 ? (
+                <ResponsiveContainer width="100%" height={190}>
+                  <LineChart data={bodyFatSeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                    <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34}/>
+                    <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
+                    <Line type="monotone" dataKey="pct" stroke="var(--amber)" strokeWidth={2.5} dot={false}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <div className="empty">Sem dados de dobras cutâneas suficientes ainda</div>}
+            </div>
+          </div>
+
+          <div className="grid grid-2" style={{marginBottom:16}}>
+            <div className="card">
+              <div className="card-title">Volume por semana (kg)</div>
+              {volumeByWeek.length>1 ? (
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={volumeByWeek}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                    <XAxis dataKey="week" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={40}/>
+                    <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
+                    <Bar dataKey="volume" fill="var(--accent)" radius={[5,5,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="empty">Ainda sem dados suficientes</div>}
+            </div>
+            <div className="card">
+              <div className="card-title">Frequência semanal</div>
+              {freqByWeek.length>1 ? (
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={freqByWeek}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+                    <XAxis dataKey="week" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={30}/>
+                    <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
+                    <Bar dataKey="treinos" fill="var(--blue)" radius={[5,5,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="empty">Ainda sem dados suficientes</div>}
+            </div>
           </div>
 
           <div className="card" style={{marginBottom:16}}>
-            <div className="card-title">Evolução do peso</div>
-            {weightSeries.length>1 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={weightSeries}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
-                  <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={34} domain={['dataMin-1','dataMax+1']}/>
-                  <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}}/>
-                  <Line type="monotone" dataKey="peso" stroke="var(--accent)" strokeWidth={2.5} dot={false}/>
-                </LineChart>
-              </ResponsiveContainer>
-            ) : <div className="empty">Sem medições suficientes ainda</div>}
+            <div className="card-title">Recordes pessoais</div>
+            {personalRecords.length ? personalRecords.map(pr=>(
+              <div className="list-row" key={pr.name}>
+                <Trophy size={15} color="var(--amber)"/>
+                <span style={{flex:1,fontSize:13.5}}>{pr.name}</span>
+                <span style={{fontSize:12,color:"var(--text-dim)"}}>{pr.bestWeight}kg · {pr.bestReps} reps · {Math.round(pr.bestVolume)}kg volume</span>
+              </div>
+            )) : <div className="empty">Nenhum recorde registrado ainda</div>}
           </div>
 
           <div className="card">
@@ -2859,7 +2981,7 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
             ))}
             {!recentWorkouts.length && <div className="empty">Nenhum treino registrado ainda</div>}
           </div>
-        </>
+        </div>
       )}
 
       {tab==="dieta" && (
