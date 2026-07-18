@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
 } from "recharts";
 import {
   LayoutDashboard, Utensils, Droplets, Dumbbell, TrendingUp, Ruler,
@@ -1452,6 +1452,35 @@ function CustomFoodForm({ onSave, onClose, initial }){
 /* ============================================================
    WATER TAB
 ============================================================ */
+function WaterBottle({ pct, goal }){
+  const W=140, H=250, bodyTop=48, bodyBottom=238, bodyH=bodyBottom-bodyTop;
+  const clamped = Math.max(0,Math.min(1,pct));
+  const fillH = clamped*bodyH;
+  const fillY = bodyBottom-fillH;
+  const marks = [0.25,0.5,0.75,1].map(f=>({ y: bodyBottom-f*bodyH, label: fmt1(goal*f)+"L" }));
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={140} height={250}>
+      <defs>
+        <clipPath id="bottleClip"><rect x="22" y={bodyTop} width={W-44} height={bodyH} rx="24"/></clipPath>
+      </defs>
+      <rect x={W/2-15} y="4" width="30" height="18" rx="5" fill="var(--border)"/>
+      <rect x={W/2-17} y="20" width="34" height="30" fill="var(--bg-elev)" stroke="var(--border)" strokeWidth="2"/>
+      <rect x="22" y={bodyTop} width={W-44} height={bodyH} rx="24" fill="var(--bg-elev)" stroke="var(--border)" strokeWidth="2"/>
+      <g clipPath="url(#bottleClip)">
+        <rect x="22" y={fillY} width={W-44} height={fillH+6} fill="var(--amber)" opacity="0.82"/>
+        <rect x="22" y={fillY} width={W-44} height="5" fill="var(--amber)"/>
+      </g>
+      <rect x="22" y={bodyTop} width={W-44} height={bodyH} rx="24" fill="none" stroke="var(--border)" strokeWidth="2"/>
+      {marks.map((m,i)=>(
+        <g key={i}>
+          <line x1="15" y1={m.y} x2="27" y2={m.y} stroke="var(--text-faint)" strokeWidth="1.5"/>
+          <text x="10" y={m.y+4} fontSize="9.5" fill="var(--text-faint)" textAnchor="end">{m.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profile }){
   const [custom, setCustom] = useState(250);
   const [editingId, setEditingId] = useState(null);
@@ -1479,77 +1508,147 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
     setWater(prev=>({...prev,[today]:[]}));
   }
 
-  const glasses = Math.round((profile.waterTarget*1000)/250);
-  const filled = Math.round((todayWater*1000)/250);
-  const pct = Math.min(100, Math.round((todayWater/profile.waterTarget)*100));
+  const pct = todayWater/profile.waterTarget;
   const sortedEntries = [...todayWaterEntries].sort((a,b)=> (b.ts||0)-(a.ts||0));
+
+  const dailyTotals = useMemo(()=>{
+    const map = {};
+    Object.entries(water).forEach(([date, entries])=>{
+      map[date] = (entries||[]).reduce((s,e)=>s+(e.ml||0),0)/1000;
+    });
+    return map;
+  },[water]);
+
+  const last7 = useMemo(()=>{
+    const days=[];
+    for(let i=6;i>=0;i--){
+      const iso = daysAgoISO(i);
+      const label = new Date(iso+"T12:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","").toUpperCase();
+      days.push({ date:iso, label, litros: fmt1(dailyTotals[iso]||0) });
+    }
+    return days;
+  },[dailyTotals]);
+
+  const last30 = useMemo(()=>{
+    const days=[];
+    for(let i=29;i>=0;i--){
+      const iso = daysAgoISO(i);
+      days.push({ date: iso.slice(5), litros: fmt1(dailyTotals[iso]||0) });
+    }
+    return days;
+  },[dailyTotals]);
+
+  const avgDaily = last7.length ? fmt1(last7.reduce((s,d)=>s+d.litros,0)/last7.length) : 0;
+
+  const longestStreak = useMemo(()=>{
+    let best=0, cur=0;
+    for(let i=89;i>=0;i--){
+      const iso = daysAgoISO(i);
+      const val = dailyTotals[iso]||0;
+      if(val >= profile.waterTarget){ cur++; best=Math.max(best,cur); } else cur=0;
+    }
+    return best;
+  },[dailyTotals, profile.waterTarget]);
 
   return (
     <div>
       <div className="section-head"><h2>Água</h2></div>
-      <div className="grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+
+      <div className="grid" style={{gridTemplateColumns:"1fr 1fr",alignItems:"stretch"}}>
         <div className="card">
           <div className="card-title">Progresso de hoje</div>
-          <div style={{textAlign:"center",padding:"10px 0 4px"}}>
-            <Droplets size={38} color="var(--amber)"/>
-            <div style={{fontFamily:"Space Grotesk",fontSize:38,fontWeight:700,marginTop:8}}>{fmt1(todayWater)} L</div>
-            <div style={{color:"var(--text-dim)",fontSize:13}}>de {profile.waterTarget} L · restam {Math.max(0,fmt1(profile.waterTarget-todayWater))} L</div>
+          <div style={{display:"flex",alignItems:"center",gap:20,justifyContent:"center",padding:"8px 0"}}>
+            <WaterBottle pct={pct} goal={profile.waterTarget}/>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"Space Grotesk",fontSize:34,fontWeight:700}}>{fmt1(todayWater)} L</div>
+              <div style={{color:"var(--text-dim)",fontSize:12.5}}>de {profile.waterTarget} L</div>
+              <div style={{fontFamily:"Space Grotesk",fontSize:20,fontWeight:700,color:"var(--amber)",marginTop:10}}>{Math.round(Math.min(1,pct)*100)}%</div>
+              <div style={{color:"var(--text-faint)",fontSize:11.5}}>da meta diária</div>
+            </div>
           </div>
-          <div className="pbar-track" style={{height:12,marginTop:14}}>
-            <div className="pbar-fill" style={{width:pct+"%", background:"var(--amber)"}}/>
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:18,flexWrap:"wrap"}}>
-            <button className="btn btn-amber" onClick={()=>add(200)}><Plus size={13}/> 200 ml</button>
-            <button className="btn btn-amber" onClick={()=>add(300)}><Plus size={13}/> 300 ml</button>
+          <div style={{display:"flex",gap:8,marginTop:16,flexWrap:"wrap",justifyContent:"center"}}>
+            <button className="btn btn-amber" onClick={()=>add(250)}><Plus size={13}/> 250 ml</button>
             <button className="btn btn-amber" onClick={()=>add(500)}><Plus size={13}/> 500 ml</button>
             <button className="btn btn-amber" onClick={()=>add(1000)}><Plus size={13}/> 1 L</button>
-            <button className="btn btn-danger" onClick={clearDay}><Trash2 size={13}/> Zerar dia</button>
           </div>
-          <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center"}}>
-            <input className="input" type="number" value={numDisplay(custom)} onChange={e=>setCustom(Number(e.target.value))} style={{width:110}}/>
+          <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center",justifyContent:"center"}}>
+            <input className="input" type="number" value={numDisplay(custom)} onChange={e=>setCustom(Number(e.target.value))} style={{width:100}}/>
             <span style={{fontSize:12.5,color:"var(--text-dim)"}}>ml</span>
-            <button className="btn btn-primary" onClick={()=>add(custom)}>Adicionar</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>add(custom)}>Adicionar</button>
+            <button className="btn btn-danger btn-sm" onClick={clearDay}><Trash2 size={13}/> Zerar dia</button>
           </div>
         </div>
-        <div className="card">
-          <div className="card-title">Copos consumidos ({filled}/{glasses})</div>
-          <div className="water-glass-grid">
-            {Array.from({length:glasses}).map((_,i)=>(
-              <div key={i} className={"water-glass"+(i<filled?" filled":"")}/>
-            ))}
+
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div className="card">
+            <div className="card-title">Resumo</div>
+            <div className="grid grid-2">
+              <div className="stat-card"><span className="stat-label">Média diária</span><span className="stat-value" style={{fontSize:19}}>{avgDaily}L</span></div>
+              <div className="stat-card"><span className="stat-label">Maior sequência</span><span className="stat-value" style={{fontSize:19}}>{longestStreak} {longestStreak===1?"dia":"dias"}</span></div>
+            </div>
+            <div style={{marginTop:10,fontSize:12,color:"var(--text-faint)"}}>Meta diária: {profile.waterTarget}L</div>
           </div>
-          <div style={{marginTop:16,fontSize:12.5,color:"var(--text-faint)"}}>Cada copo representa 250 ml. Meta diária definida em {profile.waterTarget} L no seu perfil.</div>
+          <div className="card" style={{flex:1}}>
+            <div className="card-title">Histórico semanal</div>
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={last7}>
+                <XAxis dataKey="label" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false}/>
+                <YAxis hide/>
+                <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}} formatter={(v)=>[v+"L","Água"]}/>
+                <Bar dataKey="litros" radius={[4,4,0,0]}>
+                  {last7.map((d,i)=>(
+                    <Cell key={i} fill={d.date===today ? "var(--amber)" : "var(--border)"}/>
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
       <div className="card" style={{marginTop:16}}>
         <div className="card-title">Registros de hoje <span className="badge badge-muted">{sortedEntries.length} lançamentos</span></div>
         {!sortedEntries.length && <div className="empty">Nenhum registro de água hoje ainda</div>}
-        {sortedEntries.map(entry=>(
-          <div className="list-row" key={entry.id}>
-            <Droplets size={15} color="var(--text-faint)"/>
-            {editingId === entry.id ? (
-              <>
-                <input className="input" type="number" value={numDisplay(editVal)} autoFocus style={{width:100}}
-                  onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit(entry.id)}/>
-                <span style={{fontSize:12.5,color:"var(--text-faint)"}}>ml</span>
-                <button className="btn btn-sm btn-primary" style={{marginLeft:"auto"}} onClick={()=>saveEdit(entry.id)}>Salvar</button>
-                <button className="btn btn-sm btn-ghost" onClick={()=>setEditingId(null)}>Cancelar</button>
-              </>
-            ) : (
-              <>
-                <span style={{flex:1,fontSize:13.5}}>{entry.ml} ml</span>
-                <span style={{fontSize:11.5,color:"var(--text-faint)"}}>{entry.ts ? new Date(entry.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : ""}</span>
-                <button className="iconbtn" onClick={()=>startEdit(entry)}><Edit3 size={14}/></button>
-                {confirmDeleteId===entry.id ? (
-                  <button className="btn btn-sm btn-danger" onClick={()=>removeEntry(entry.id)}>Confirmar?</button>
-                ) : (
-                  <button className="iconbtn" onClick={()=>removeEntry(entry.id)}><Trash2 size={14}/></button>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+        <div className="grid grid-2">
+          {sortedEntries.map(entry=>(
+            <div className="list-row" key={entry.id}>
+              <Droplets size={15} color="var(--amber)"/>
+              {editingId === entry.id ? (
+                <>
+                  <input className="input" type="number" value={numDisplay(editVal)} autoFocus style={{width:90}}
+                    onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit(entry.id)}/>
+                  <span style={{fontSize:12.5,color:"var(--text-faint)"}}>ml</span>
+                  <button className="btn btn-sm btn-primary" style={{marginLeft:"auto"}} onClick={()=>saveEdit(entry.id)}>Salvar</button>
+                  <button className="btn btn-sm btn-ghost" onClick={()=>setEditingId(null)}>Cancelar</button>
+                </>
+              ) : (
+                <>
+                  <span style={{fontSize:11.5,color:"var(--text-faint)",width:46}}>{entry.ts ? new Date(entry.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : ""}</span>
+                  <span style={{flex:1,fontSize:13.5}}>{entry.ml} ml</span>
+                  <button className="iconbtn" onClick={()=>startEdit(entry)}><Edit3 size={14}/></button>
+                  {confirmDeleteId===entry.id ? (
+                    <button className="btn btn-sm btn-danger" onClick={()=>removeEntry(entry.id)}>Confirmar?</button>
+                  ) : (
+                    <button className="iconbtn" onClick={()=>removeEntry(entry.id)}><Trash2 size={14}/></button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{marginTop:16}}>
+        <div className="card-title">Evolução — últimos 30 dias</div>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={last30}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#ece4d2" vertical={false}/>
+            <XAxis dataKey="date" tick={{fill:"#a89a84",fontSize:10}} axisLine={false} tickLine={false} interval={4}/>
+            <YAxis tick={{fill:"#a89a84",fontSize:11}} axisLine={false} tickLine={false} width={32}/>
+            <Tooltip contentStyle={{background:"#ffffff",border:"1px solid #e4dcc9",borderRadius:10,fontSize:12}} formatter={(v)=>[v+"L","Água"]}/>
+            <Line type="monotone" dataKey="litros" stroke="var(--amber)" strokeWidth={2.5} dot={{r:2.5}}/>
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
