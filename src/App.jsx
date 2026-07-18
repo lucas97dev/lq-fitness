@@ -434,6 +434,9 @@ async function saveKey(userId, key, value){
 async function deleteAllUserData(userId){
   try{ await supabase.from("user_data").delete().eq("user_id", userId); }catch(e){ /* noop */ }
 }
+async function deleteKey(userId, key){
+  try{ await supabase.from("user_data").delete().eq("user_id", userId).eq("key", key); }catch(e){ /* noop */ }
+}
 // Every day's diary is saved under its own key ("diary:2026-07-13", etc.) —
 // this fetches all of them at once for the history browser, most recent first.
 async function loadDiaryHistory(userId){
@@ -627,6 +630,7 @@ export default function FitnessApp({ user }){
   const [goals, setGoals] = useState([]);
   const [schedule, setSchedule] = useState({}); // { "0"-"6" (dia da semana) -> treinoId | null }
   const [dietPlan, setDietPlan] = useState([]); // [{id, name, items:[{id,foodId,qty}]}] — dieta fixa/planejada
+  const [adminNote, setAdminNote] = useState(null); // {text, date} — recado deixado pela nutricionista
   const [activeSession, setActiveSession] = useState(null); // {treinoId, ficha, startedAt, log:[{exId,sets:[{weight,reps,done}]}]}
   const [restTimer, setRestTimer] = useState(null); // {endTime, total}
   const [now, setNow] = useState(Date.now());
@@ -637,7 +641,7 @@ export default function FitnessApp({ user }){
 
   useEffect(()=>{
     (async ()=>{
-      const [f,d,w,fi,h,b,g,sc,dp] = await Promise.all([
+      const [f,d,w,fi,h,b,g,sc,dp,an] = await Promise.all([
         loadKey(user.id, "foods-custom", []),
         loadKey(user.id, "diary:"+today, null),
         loadKey(user.id, "water-log", {}),
@@ -647,6 +651,7 @@ export default function FitnessApp({ user }){
         loadKey(user.id, "goals", null),
         loadKey(user.id, "schedule", {}),
         loadKey(user.id, "diet-plan", null),
+        loadKey(user.id, "admin-note", null),
       ]);
 
       let p = await loadProfileFromSupabase(user.id);
@@ -669,6 +674,7 @@ export default function FitnessApp({ user }){
       setGoals(g||[]);
       setSchedule(sc||{});
       setDietPlan(dp||[]);
+      setAdminNote(an||null);
 
       const { data: adminRow } = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
       setIsAdmin(!!adminRow);
@@ -835,7 +841,7 @@ export default function FitnessApp({ user }){
       </aside>
 
       <main className={"main"+(sidebarOpen?"":" full")}>
-        {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule}} />}
+        {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule, adminNote, onDismissNote:()=>{ setAdminNote(null); deleteKey(user.id,"admin-note"); }}} />}
         {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan, user}} />}
         {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, todayWaterEntries, profile}} />}
         {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
@@ -918,7 +924,7 @@ function TrainingCalendar({ history }){
   );
 }
 
-function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule }){
+function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule, adminNote, onDismissNote }){
   const calPct = macroTotals.kcal/profile.caloriesTarget;
   const proPct = macroTotals.p/profile.proteinTarget;
   const waterPct = todayWater/profile.waterTarget;
@@ -944,6 +950,23 @@ function Dashboard({ profile, macroTotals, todayWater, todayMeals, history, body
 
   return (
     <div>
+      {adminNote && adminNote.text && (
+        <div className="card" style={{marginBottom:16, borderColor:"rgba(184,134,58,0.4)", background:"var(--accent-glow)"}}>
+          <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"var(--card)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Sparkles size={16} color="var(--accent)"/>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--accent-dim)",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:4}}>
+                Recado da Elane {adminNote.date ? `· ${new Date(adminNote.date).toLocaleDateString("pt-BR")}` : ""}
+              </div>
+              <div style={{fontSize:13.5,color:"var(--text)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{adminNote.text}</div>
+            </div>
+            <button className="btn btn-sm btn-ghost" style={{flexShrink:0}} onClick={onDismissNote}>Marcar como lido</button>
+          </div>
+        </div>
+      )}
+
       <div className="topbar">
         <div>
           <div className="greeting">Olá, {profile.name} 👋</div>
@@ -2881,12 +2904,13 @@ function AdminTab({ user }){
   async function openPatient(p){
     setSelected(p);
     setLoadingPatient(true);
-    const [bodyRow, historyRow, dietRow, fichasRow, diaryDays] = await Promise.all([
+    const [bodyRow, historyRow, dietRow, fichasRow, diaryDays, noteRow] = await Promise.all([
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","body-measurements").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","workout-history").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","diet-plan").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","fichas").maybeSingle(),
       loadDiaryHistory(p.id),
+      supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","admin-note").maybeSingle(),
     ]);
     setPatientData({
       bodyData: bodyRow.data?.value || [],
@@ -2894,6 +2918,7 @@ function AdminTab({ user }){
       dietPlan: dietRow.data?.value || [],
       fichas: fichasRow.data?.value || [],
       diaryDays: diaryDays || [],
+      adminNote: noteRow.data?.value || null,
     });
     setLoadingPatient(false);
   }
@@ -2921,6 +2946,7 @@ function AdminTab({ user }){
             data={patientData}
             setDietPlan={(updater)=>updatePatientField("dietPlan","diet-plan",updater)}
             setFichas={(updater)=>updatePatientField("fichas","fichas",updater)}
+            setAdminNote={(updater)=>updatePatientField("adminNote","admin-note",updater)}
           />
         )}
       </div>
@@ -2959,9 +2985,9 @@ function AdminTab({ user }){
   );
 }
 
-function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
-  const [tab, setTab] = useState("evolucao"); // evolucao | dieta | treino
-  const { bodyData, history, dietPlan, fichas, diaryDays } = data;
+function AdminPatientDetail({ patient, data, setDietPlan, setFichas, setAdminNote }){
+  const [tab, setTab] = useState("evolucao"); // evolucao | dieta | treino | recado
+  const { bodyData, history, dietPlan, fichas, diaryDays, adminNote } = data;
   const [foods] = useState(FOOD_DB_SEED);
 
   const latest = bodyData[bodyData.length-1];
@@ -3027,6 +3053,7 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
         <button className={"tab-btn"+(tab==="evolucao"?" active":"")} onClick={()=>setTab("evolucao")}>Evolução</button>
         <button className={"tab-btn"+(tab==="dieta"?" active":"")} onClick={()=>setTab("dieta")}>Prescrever dieta</button>
         <button className={"tab-btn"+(tab==="treino"?" active":"")} onClick={()=>setTab("treino")}>Prescrever treino</button>
+        <button className={"tab-btn"+(tab==="recado"?" active":"")} onClick={()=>setTab("recado")}>Recado</button>
       </div>
 
       {tab==="evolucao" && (
@@ -3156,6 +3183,41 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas }){
       )}
 
       {tab==="treino" && <AdminFichaEditor fichas={fichas} setFichas={setFichas}/>}
+
+      {tab==="recado" && <AdminNoteEditor note={adminNote} setNote={setAdminNote} patientName={patient.name}/>}
+    </div>
+  );
+}
+
+function AdminNoteEditor({ note, setNote, patientName }){
+  const [text, setText] = useState(note?.text || "");
+  const [saved, setSaved] = useState(false);
+
+  function save(){
+    setNote({ text: text.trim(), date: new Date().toISOString() });
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2000);
+  }
+  function clear(){
+    setText("");
+    setNote(null);
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title">Recado para {patientName || "o paciente"}</div>
+      <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>
+        Esse recado aparece em destaque no Dashboard do paciente, até ele marcar como lido.
+      </div>
+      <textarea className="input" rows={5} value={text} onChange={e=>setText(e.target.value)}
+        placeholder="Ex: Parabéns pela evolução dessa semana! Vamos aumentar a proteína a partir de segunda..."/>
+      {note?.date && <div style={{fontSize:11,color:"var(--text-faint)",marginTop:8}}>Último recado enviado em {new Date(note.date).toLocaleDateString("pt-BR")}</div>}
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <button className="btn btn-primary" style={{flex:1,justifyContent:"center"}} onClick={save} disabled={!text.trim()}>
+          {saved ? "Enviado!" : "Enviar recado"}
+        </button>
+        {note && <button className="btn btn-danger" onClick={clear}><Trash2 size={13}/> Remover</button>}
+      </div>
     </div>
   );
 }
