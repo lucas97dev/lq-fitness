@@ -1584,6 +1584,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
   const [renamingFicha, setRenamingFicha] = useState(false);
   const [renamingTreino, setRenamingTreino] = useState(null);
   const [pendingStart, setPendingStart] = useState(null); // treino awaiting the progression-suggestion prompt
+  const [finishedEntry, setFinishedEntry] = useState(null); // just-completed workout, for the share card
 
   const ficha = fichas.find(f=>f.id===activeFichaId) || fichas[0];
 
@@ -1677,7 +1678,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
 
   if(activeSession){
     return <WorkoutSession session={activeSession} setSession={setActiveSession} history={history} setHistory={setHistory}
-      restTimer={restTimer} setRestTimer={setRestTimer} celebrate={celebrate}/>;
+      restTimer={restTimer} setRestTimer={setRestTimer} celebrate={celebrate} onFinish={setFinishedEntry}/>;
   }
 
   if(!ficha){
@@ -1797,7 +1798,174 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
           </div>
         </Modal>
       )}
+      {finishedEntry && <WorkoutShareCard entry={finishedEntry} patientName={profile.name} onClose={()=>setFinishedEntry(null)}/>}
     </div>
+  );
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(" ");
+  let line = "";
+  const lines = [];
+  words.forEach(w=>{
+    const test = line ? line+" "+w : w;
+    if(ctx.measureText(test).width > maxWidth && line){
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  });
+  if(line) lines.push(line);
+  const startY = y - (lines.length-1)*lineHeight/2;
+  lines.forEach((l,i)=> ctx.fillText(l, x, startY + i*lineHeight));
+}
+
+function WorkoutShareCard({ entry, patientName, onClose }){
+  const canvasRef = useRef(null);
+  const [canShareFiles, setCanShareFiles] = useState(false);
+
+  const topSets = entry.exercises
+    .map(e => ({ name:e.name, best: e.sets.length ? e.sets.reduce((a,b)=> b.weight>a.weight?b:a) : null }))
+    .filter(e=>e.best)
+    .slice(0,5);
+
+  useEffect(()=>{ setCanShareFiles(!!(navigator.share && navigator.canShare)); },[]);
+
+  function drawCard(){
+    return new Promise((resolve)=>{
+      const canvas = canvasRef.current;
+      if(!canvas){ resolve(); return; }
+      const ctx = canvas.getContext("2d");
+      const W = 1080, H = 1350;
+      canvas.width = W; canvas.height = H;
+
+      const grad = ctx.createLinearGradient(0,0,0,H);
+      grad.addColorStop(0, "#1c1611");
+      grad.addColorStop(1, "#0f0b08");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,0,W,H);
+
+      ctx.strokeStyle = "rgba(217,169,79,0.35)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(24,24,W-48,H-48);
+
+      function finishDrawing(){
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#d9a94f";
+        ctx.font = "600 32px sans-serif";
+        ctx.fillText("EQ FITNESS", W/2, 300);
+
+        ctx.fillStyle = "#f5ede3";
+        ctx.font = "700 56px sans-serif";
+        wrapText(ctx, entry.treinoName, W/2, 385, W-160, 64);
+
+        ctx.fillStyle = "#ab9c8c";
+        ctx.font = "400 28px sans-serif";
+        const dateLabel = new Date(entry.date+"T12:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+        ctx.fillText(dateLabel, W/2, 470);
+
+        const stats = [
+          { label:"DURAÇÃO", value:`${entry.duration} min` },
+          { label:"VOLUME", value:`${Math.round(entry.volume).toLocaleString("pt-BR")}kg` },
+          { label:"CALORIAS", value:`${entry.caloriesEst} kcal` },
+        ];
+        const statY = 590; const colW = W/3;
+        stats.forEach((s,i)=>{
+          const cx = colW*i + colW/2;
+          ctx.fillStyle = "#d9a94f";
+          ctx.font = "700 48px sans-serif";
+          ctx.fillText(s.value, cx, statY);
+          ctx.fillStyle = "#8a7d6f";
+          ctx.font = "600 20px sans-serif";
+          ctx.fillText(s.label, cx, statY+36);
+        });
+
+        ctx.strokeStyle = "rgba(217,169,79,0.25)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(120, 670); ctx.lineTo(W-120, 670); ctx.stroke();
+
+        ctx.textAlign = "left";
+        let y = 740;
+        ctx.fillStyle = "#8a7d6f";
+        ctx.font = "600 22px sans-serif";
+        ctx.fillText("EXERCÍCIOS", 120, y);
+        y += 50;
+        topSets.forEach(ex=>{
+          ctx.fillStyle = "#f5ede3";
+          ctx.font = "500 30px sans-serif";
+          ctx.fillText(ex.name.length>26 ? ex.name.slice(0,24)+"…" : ex.name, 120, y);
+          ctx.textAlign = "right";
+          ctx.fillStyle = "#d9a94f";
+          ctx.font = "700 30px sans-serif";
+          ctx.fillText(`${ex.best.weight}kg × ${ex.best.reps}`, W-120, y);
+          ctx.textAlign = "left";
+          y += 56;
+        });
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#71655a";
+        ctx.font = "400 22px sans-serif";
+        ctx.fillText("Elane Quezia Dias · Nutricionista", W/2, H-70);
+
+        resolve();
+      }
+
+      const logo = new Image();
+      logo.onload = ()=>{
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(W/2, 150, 60, 0, Math.PI*2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(logo, W/2-60, 90, 120, 120);
+        ctx.restore();
+        finishDrawing();
+      };
+      logo.onerror = finishDrawing;
+      logo.src = "/logo.jpg";
+    });
+  }
+
+  useEffect(()=>{ drawCard(); /* eslint-disable-next-line */ },[]);
+
+  async function download(){
+    await drawCard();
+    const link = document.createElement("a");
+    link.download = `treino-${entry.date}.png`;
+    link.href = canvasRef.current.toDataURL("image/png");
+    link.click();
+  }
+
+  async function share(){
+    await drawCard();
+    canvasRef.current.toBlob(async (blob)=>{
+      if(!blob) return;
+      const file = new File([blob], `treino-${entry.date}.png`, {type:"image/png"});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        try{ await navigator.share({ files:[file], title:"Meu treino", text:`${entry.treinoName} — ${Math.round(entry.volume)}kg de volume!` }); }
+        catch(e){ /* usuário cancelou o compartilhamento */ }
+      } else {
+        download();
+      }
+    }, "image/png");
+  }
+
+  return (
+    <Modal title="Resumo do treino" onClose={onClose} wide>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+        <canvas ref={canvasRef} style={{width:"100%",maxWidth:300,borderRadius:12,border:"1px solid var(--border-soft)"}}/>
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <button className="btn btn-ghost" style={{flex:1,justifyContent:"center"}} onClick={download}><Download size={14}/> Baixar imagem</button>
+        {canShareFiles && (
+          <button className="btn btn-primary" style={{flex:1,justifyContent:"center"}} onClick={share}>Compartilhar</button>
+        )}
+      </div>
+      <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:12,textAlign:"center"}}>
+        Baixe ou compartilhe direto no Instagram, WhatsApp, GymRats, ou mande pra Elane.
+      </div>
+    </Modal>
   );
 }
 
@@ -1971,7 +2139,7 @@ function ExerciseForm({ onSave, onClose }){
   );
 }
 
-function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate }){
+function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate, onFinish }){
   const elapsedMin = Math.round((Date.now()-session.startedAt)/60000);
 
   function bestEverWeight(exName){
@@ -2021,13 +2189,7 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
     setHistory(prev=>[...prev, entry]);
     setSession(null);
     setRestTimer(null);
-    if(celebrate){
-      celebrate({
-        emoji: "🏆",
-        title: "Treino concluído!",
-        subtitle: `${session.treino.name} finalizado em ${duration} min, com ${Math.round(volume).toLocaleString("pt-BR")}kg de volume total. Mandou bem!`,
-      });
-    }
+    if(onFinish) onFinish(entry);
   }
 
   return (
