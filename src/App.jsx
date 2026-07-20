@@ -601,6 +601,28 @@ const NAV = [
 /* ============================================================
    MAIN APP
 ============================================================ */
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error){ return { error }; }
+  componentDidCatch(error, info){ console.error("Erro na tela:", error, info); }
+  render(){
+    if(this.state.error){
+      return (
+        <div className="card" style={{margin:"20px 0"}}>
+          <div className="card-title" style={{color:"var(--red)"}}>Ops, algo deu errado nessa tela</div>
+          <div style={{fontSize:12.5,color:"var(--text-dim)",marginBottom:10}}>
+            Tenta trocar de aba e voltar. Se continuar acontecendo, manda esse texto pro suporte:
+          </div>
+          <pre style={{fontSize:11,color:"var(--text-faint)",whiteSpace:"pre-wrap",background:"var(--bg-elev)",padding:10,borderRadius:8,overflowX:"auto"}}>
+            {String(this.state.error?.message || this.state.error)}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function FitnessApp({ user }){
   const [tab, setTab] = useState("dashboard");
   const [loaded, setLoaded] = useState(false);
@@ -841,15 +863,17 @@ export default function FitnessApp({ user }){
       </aside>
 
       <main className={"main"+(sidebarOpen?"":" full")}>
-        {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule, adminNote, onDismissNote:()=>{ setAdminNote(null); deleteKey(user.id,"admin-note"); }}} />}
-        {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan, user}} />}
-        {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, todayWaterEntries, profile}} />}
-        {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
-        {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
-        {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
-        {tab==="admin" && isAdmin && <AdminTab user={user}/>}
-        {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
-        {tab==="profile" && <ProfileTab {...{profile, setProfile, resetAllData}} />}
+        <ErrorBoundary key={tab}>
+          {tab==="dashboard" && <Dashboard {...{profile, macroTotals, todayWater, todayMeals, history, bodyData, streak, latestWeight, fichas, schedule, adminNote, onDismissNote:()=>{ setAdminNote(null); deleteKey(user.id,"admin-note"); }}} />}
+          {tab==="diet" && <DietTab {...{foods, setFoods, diary, setDiary, today, todayMeals, macroTotals, profile, dietPlan, setDietPlan, user}} />}
+          {tab==="water" && <WaterTab {...{water, setWater, today, todayWater, todayWaterEntries, profile}} />}
+          {tab==="workout" && <WorkoutTab {...{fichas, setFichas, history, setHistory, activeSession, setActiveSession, restTimer, setRestTimer, profile, schedule, setSchedule, celebrate:setCelebration}} />}
+          {tab==="evolution" && <EvolutionTab {...{history, bodyData, diary, water, fichas}} />}
+          {tab==="body" && <BodyTab {...{bodyData, setBodyData, profile, setProfile, user}} />}
+          {tab==="admin" && isAdmin && <AdminTab user={user}/>}
+          {tab==="goals" && <GoalsTab {...{goals, setGoals, bodyData, profile, history}} />}
+          {tab==="profile" && <ProfileTab {...{profile, setProfile, resetAllData}} />}
+        </ErrorBoundary>
       </main>
 
       {restTimer && (
