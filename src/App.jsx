@@ -1519,68 +1519,207 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
   const [editVal, setEditVal] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  // Normaliza qualquer formato antigo de dados
+  function getEntries(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+
+    if (typeof value === "number") {
+      return [{
+        id: uid(),
+        ml: value * 1000,
+        ts: Date.now()
+      }];
+    }
+
+    if (typeof value === "object") {
+      return [value];
+    }
+
+    return [];
+  }
+
   function add(ml){
     if(!ml) return;
-    setWater(prev=> ({...prev, [today]: [...(prev[today]||[]), { id:uid(), ml, ts:Date.now() }]}));
+
+    setWater(prev => {
+      const entries = getEntries(prev[today]);
+
+      return {
+        ...prev,
+        [today]: [
+          ...entries,
+          {
+            id: uid(),
+            ml: Number(ml),
+            ts: Date.now()
+          }
+        ]
+      };
+    });
   }
+
   function removeEntry(id){
-    if(confirmDeleteId===id){
-      setWater(prev=> ({...prev, [today]: (prev[today]||[]).filter(e=>e.id!==id)}));
+    if(confirmDeleteId === id){
+
+      setWater(prev => {
+        const entries = getEntries(prev[today]);
+
+        return {
+          ...prev,
+          [today]: entries.filter(e => e.id !== id)
+        };
+      });
+
       setConfirmDeleteId(null);
+
     } else {
       setConfirmDeleteId(id);
     }
   }
-  function startEdit(entry){ setEditingId(entry.id); setEditVal(entry.ml); }
+
+  function startEdit(entry){
+    setEditingId(entry.id);
+    setEditVal(entry.ml);
+  }
+
   function saveEdit(id){
-    setWater(prev=> ({...prev, [today]: (prev[today]||[]).map(e=> e.id===id ? {...e, ml:Number(editVal)} : e)}));
+
+    setWater(prev => {
+      const entries = getEntries(prev[today]);
+
+      return {
+        ...prev,
+        [today]: entries.map(e =>
+          e.id === id
+            ? {
+                ...e,
+                ml: Number(editVal)
+              }
+            : e
+        )
+      };
+    });
+
     setEditingId(null);
   }
+
   function clearDay(){
-    setWater(prev=>({...prev,[today]:[]}));
+    setWater(prev => ({
+      ...prev,
+      [today]: []
+    }));
   }
 
-  const pct = todayWater/profile.waterTarget;
-  const sortedEntries = [...todayWaterEntries].sort((a,b)=> (b.ts||0)-(a.ts||0));
+  const pct = todayWater / profile.waterTarget;
 
-  const dailyTotals = useMemo(()=>{
+  const sortedEntries = [...getEntries(todayWaterEntries)].sort(
+    (a,b) => (b.ts || 0) - (a.ts || 0)
+  );
+
+  const dailyTotals = useMemo(() => {
     const map = {};
-    Object.entries(water).forEach(([date, entries])=>{
-      map[date] = (entries||[]).reduce((s,e)=>s+(e.ml||0),0)/1000;
+
+    Object.entries(water || {}).forEach(([date, entries]) => {
+
+      const safeEntries = getEntries(entries);
+
+      map[date] =
+        safeEntries.reduce(
+          (sum, e) => sum + (Number(e.ml) || 0),
+          0
+        ) / 1000;
+
     });
+
     return map;
-  },[water]);
 
-  const last7 = useMemo(()=>{
-    const days=[];
-    for(let i=6;i>=0;i--){
+  }, [water]);
+
+  const last7 = useMemo(() => {
+    const days = [];
+
+    for(let i = 6; i >= 0; i--){
+
       const iso = daysAgoISO(i);
-      const label = new Date(iso+"T12:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","").toUpperCase();
-      days.push({ date:iso, label, litros: fmt1(dailyTotals[iso]||0) });
+
+      const label = new Date(iso + "T12:00")
+        .toLocaleDateString("pt-BR", {
+          weekday: "short"
+        })
+        .replace(".", "")
+        .toUpperCase();
+
+      days.push({
+        date: iso,
+        label,
+        litros: fmt1(dailyTotals[iso] || 0)
+      });
+
     }
+
     return days;
-  },[dailyTotals]);
 
-  const last30 = useMemo(()=>{
-    const days=[];
-    for(let i=29;i>=0;i--){
+  }, [dailyTotals]);
+
+  const last30 = useMemo(() => {
+    const days = [];
+
+    for(let i = 29; i >= 0; i--){
+
       const iso = daysAgoISO(i);
-      days.push({ date: iso.slice(5), litros: fmt1(dailyTotals[iso]||0) });
+
+      days.push({
+        date: iso.slice(5),
+        litros: fmt1(dailyTotals[iso] || 0)
+      });
+
     }
+
     return days;
-  },[dailyTotals]);
 
-  const avgDaily = last7.length ? fmt1(last7.reduce((s,d)=>s+d.litros,0)/last7.length) : 0;
+  }, [dailyTotals]);
 
-  const longestStreak = useMemo(()=>{
-    let best=0, cur=0;
-    for(let i=89;i>=0;i--){
+  const avgDaily =
+    last7.length
+      ? fmt1(
+          last7.reduce(
+            (sum, day) => sum + Number(day.litros),
+            0
+          ) / last7.length
+        )
+      : 0;
+
+  const longestStreak = useMemo(() => {
+
+    let best = 0;
+    let current = 0;
+
+    for(let i = 89; i >= 0; i--){
+
       const iso = daysAgoISO(i);
-      const val = dailyTotals[iso]||0;
-      if(val >= profile.waterTarget){ cur++; best=Math.max(best,cur); } else cur=0;
+
+      const value = dailyTotals[iso] || 0;
+
+      if(value >= profile.waterTarget){
+
+        current++;
+        best = Math.max(best, current);
+
+      } else {
+
+        current = 0;
+
+      }
+
     }
+
     return best;
-  },[dailyTotals, profile.waterTarget]);
+
+  }, [dailyTotals, profile.waterTarget]);
+
+  // resto do componente...
+}
 
   return (
     <div>
