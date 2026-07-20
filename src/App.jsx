@@ -751,10 +751,18 @@ export default function FitnessApp({ user }){
 
   const restRemaining = restTimer ? Math.max(0, Math.round((restTimer.endTime - now)/1000)) : 0;
 
-  const todayMeals = diary[today]?.meals || [];
-  const todayWaterEntries = water[today] || [];
-  const todayWater = todayWaterEntries.reduce((s,e)=>s+(e.ml||0),0)/1000;
+ const todayMeals = diary[today]?.meals || [];
 
+// 1. Pegamos o que está em water[today]
+const rawWater = water[today];
+
+// 2. Garantimos que se transforme em um array válido para o reduce
+const todayWaterEntries = Array.isArray(rawWater) 
+  ? rawWater 
+  : (rawWater ? [rawWater] : []);
+
+// 3. O reduce agora roda 100% seguro sem quebrar a tela
+const todayWater = todayWaterEntries.reduce((s, e) => s + (e?.ml || 0), 0) / 1000;
   useEffect(()=>{
     if(!loaded) return;
     if(profile.waterTarget && todayWater >= profile.waterTarget && waterCelebratedRef.current !== today){
