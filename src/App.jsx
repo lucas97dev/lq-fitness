@@ -1495,8 +1495,8 @@ function WaterBottle({ pct, goal }){
       <rect x={W/2-17} y="20" width="34" height="30" fill="var(--bg-elev)" stroke="var(--border)" strokeWidth="2"/>
       <rect x="22" y={bodyTop} width={W-44} height={bodyH} rx="24" fill="var(--bg-elev)" stroke="var(--border)" strokeWidth="2"/>
       <g clipPath="url(#bottleClip)">
-        <rect x="22" y={fillY} width={W-44} height={fillH+6} fill="var(--amber)" opacity="0.82"/>
-        <rect x="22" y={fillY} width={W-44} height="5" fill="var(--amber)"/>
+        <rect x="22" y={fillY} width={W-44} height={fillH+6} fill="#5cb3e0" opacity="0.85"/>
+        <rect x="22" y={fillY} width={W-44} height="5" fill="#8fd0ee"/>
       </g>
       <rect x="22" y={bodyTop} width={W-44} height={bodyH} rx="24" fill="none" stroke="var(--border)" strokeWidth="2"/>
       {marks.map((m,i)=>(
