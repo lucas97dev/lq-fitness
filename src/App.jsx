@@ -752,8 +752,12 @@ export default function FitnessApp({ user }){
   const restRemaining = restTimer ? Math.max(0, Math.round((restTimer.endTime - now)/1000)) : 0;
 
   const todayMeals = diary[today]?.meals || [];
-  const todayWaterEntries = water[today] || [];
-  const todayWater = todayWaterEntries.reduce((s,e)=>s+(e.ml||0),0)/1000;
+  const todayWaterRaw = water[today];
+  const todayWaterEntries = Array.isArray(todayWaterRaw) ? todayWaterRaw : [];
+  // legacy accounts had a single liters number per day instead of a list of entries
+  const todayWater = Array.isArray(todayWaterRaw)
+    ? todayWaterEntries.reduce((s,e)=>s+(e.ml||0),0)/1000
+    : (typeof todayWaterRaw === "number" ? todayWaterRaw : 0);
 
   useEffect(()=>{
     if(!loaded) return;
@@ -1513,11 +1517,11 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
 
   function add(ml){
     if(!ml) return;
-    setWater(prev=> ({...prev, [today]: [...(prev[today]||[]), { id:uid(), ml, ts:Date.now() }]}));
+    setWater(prev=> ({...prev, [today]: [...(Array.isArray(prev[today]) ? prev[today] : []), { id:uid(), ml, ts:Date.now() }]}));
   }
   function removeEntry(id){
     if(confirmDeleteId===id){
-      setWater(prev=> ({...prev, [today]: (prev[today]||[]).filter(e=>e.id!==id)}));
+      setWater(prev=> ({...prev, [today]: (Array.isArray(prev[today]) ? prev[today] : []).filter(e=>e.id!==id)}));
       setConfirmDeleteId(null);
     } else {
       setConfirmDeleteId(id);
@@ -1525,7 +1529,7 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
   }
   function startEdit(entry){ setEditingId(entry.id); setEditVal(entry.ml); }
   function saveEdit(id){
-    setWater(prev=> ({...prev, [today]: (prev[today]||[]).map(e=> e.id===id ? {...e, ml:Number(editVal)} : e)}));
+    setWater(prev=> ({...prev, [today]: (Array.isArray(prev[today]) ? prev[today] : []).map(e=> e.id===id ? {...e, ml:Number(editVal)} : e)}));
     setEditingId(null);
   }
   function clearDay(){
@@ -1538,7 +1542,13 @@ function WaterTab({ water, setWater, today, todayWater, todayWaterEntries, profi
   const dailyTotals = useMemo(()=>{
     const map = {};
     Object.entries(water).forEach(([date, entries])=>{
-      map[date] = (entries||[]).reduce((s,e)=>s+(e.ml||0),0)/1000;
+      if(Array.isArray(entries)){
+        map[date] = entries.reduce((s,e)=>s+(e.ml||0),0)/1000;
+      } else if(typeof entries === "number"){
+        map[date] = entries; // conta antiga: já vinha salvo em litros
+      } else {
+        map[date] = 0;
+      }
     });
     return map;
   },[water]);
