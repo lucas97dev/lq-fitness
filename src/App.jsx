@@ -2087,10 +2087,23 @@ function WorkoutShareCard({ entry, patientName, onClose }){
 
   async function download(){
     await drawCard();
-    const link = document.createElement("a");
-    link.download = `treino-${entry.date}.png`;
-    link.href = canvasRef.current.toDataURL("image/png");
-    link.click();
+    canvasRef.current.toBlob((blob)=>{
+      if(!blob) return;
+      const url = URL.createObjectURL(blob);
+      // Try the standard download first (works on desktop and most Android browsers)...
+      const link = document.createElement("a");
+      link.download = `treino-${entry.date}.png`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // ...and also open the image in a new tab as a universal fallback —
+      // iOS Safari (and some in-app browsers) silently ignore the download
+      // attribute, but opening the image directly lets the person long-press
+      // it and choose "Save Image" from there.
+      window.open(url, "_blank");
+      setTimeout(()=>URL.revokeObjectURL(url), 8000);
+    }, "image/png");
   }
 
   async function share(){
@@ -2119,7 +2132,7 @@ function WorkoutShareCard({ entry, patientName, onClose }){
         )}
       </div>
       <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:12,textAlign:"center"}}>
-        Baixe ou compartilhe direto no Instagram, WhatsApp, GymRats, ou mande pra Elane.
+        No celular, "Baixar imagem" abre a foto numa aba — toque e segure nela pra salvar. Ou use "Compartilhar" pra mandar direto pro Instagram, WhatsApp, GymRats, ou pra Elane.
       </div>
     </Modal>
   );
