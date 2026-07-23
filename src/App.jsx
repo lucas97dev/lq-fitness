@@ -2512,11 +2512,13 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
         const exDef = session.treino.exercises[exIdx];
         return (
           <div className="exercise-card" key={l.exId}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,gap:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:8}}>
               <div style={{fontWeight:700,fontSize:14.5,flex:1}}>{l.exName}</div>
               <span className="badge badge-muted">Meta: {exDef.sets}x{exDef.reps}{exDef.load ? ` · ${exDef.load}kg` : ""}</span>
-              <button className="iconbtn" title="Substituir exercício" onClick={()=>setSubstitutingIdx(exIdx)}><RefreshCw size={14}/></button>
             </div>
+            <button className="btn btn-sm btn-ghost" style={{marginBottom:10}} onClick={()=>setSubstitutingIdx(exIdx)}>
+              <RefreshCw size={13}/> Substituir exercício
+            </button>
             <div className="set-row" style={{color:"var(--text-faint)",fontSize:11}}>
               <span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span><span></span>
             </div>
