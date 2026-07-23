@@ -8,7 +8,7 @@ import {
   Target, User, Plus, Minus, Search, X, Flame, Trophy, Check,
   ChevronRight, ChevronLeft, Play, Pause, Square, Trash2, Edit3,
   Star, Copy, Calendar as CalendarIcon, Award, Zap, ChevronDown,
-  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut, Users, Download
+  Camera, ArrowUp, ArrowDown, Sparkles, Menu, ChevronsLeft, LogOut, Users, Download, RefreshCw
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 
@@ -290,60 +290,99 @@ const MUSCLE_GROUPS = ["Peito","Costas","Pernas","Ombro","Bíceps","Tríceps","A
 
 const EXERCISE_LIBRARY = [
   // Peito
-  {name:"Supino reto barra", group:"Peito"}, {name:"Supino inclinado barra", group:"Peito"},
-  {name:"Supino reto halteres", group:"Peito"}, {name:"Supino inclinado halteres", group:"Peito"},
-  {name:"Crucifixo reto halteres", group:"Peito"}, {name:"Crucifixo inclinado halteres", group:"Peito"},
-  {name:"Crossover (cabo)", group:"Peito"}, {name:"Peck deck (voador)", group:"Peito"},
-  {name:"Flexão de braço", group:"Peito"}, {name:"Supino declinado barra", group:"Peito"},
-  {name:"Pullover halteres", group:"Peito"},
+  {name:"Supino reto barra", group:"Peito", pattern:"empurrar_horizontal", equipment:"barra"},
+  {name:"Supino inclinado barra", group:"Peito", pattern:"empurrar_horizontal", equipment:"barra"},
+  {name:"Supino reto halteres", group:"Peito", pattern:"empurrar_horizontal", equipment:"halteres"},
+  {name:"Supino inclinado halteres", group:"Peito", pattern:"empurrar_horizontal", equipment:"halteres"},
+  {name:"Crucifixo reto halteres", group:"Peito", pattern:"isolamento_peito", equipment:"halteres"},
+  {name:"Crucifixo inclinado halteres", group:"Peito", pattern:"isolamento_peito", equipment:"halteres"},
+  {name:"Crossover (cabo)", group:"Peito", pattern:"isolamento_peito", equipment:"cabo"},
+  {name:"Peck deck (voador)", group:"Peito", pattern:"isolamento_peito", equipment:"maquina"},
+  {name:"Flexão de braço", group:"Peito", pattern:"empurrar_horizontal", equipment:"peso_corporal"},
+  {name:"Supino declinado barra", group:"Peito", pattern:"empurrar_horizontal", equipment:"barra"},
+  {name:"Pullover halteres", group:"Peito", pattern:"isolamento_peito", equipment:"halteres"},
   // Costas
-  {name:"Puxada frontal (pulley)", group:"Costas"}, {name:"Puxada supinada", group:"Costas"},
-  {name:"Remada curvada barra", group:"Costas"}, {name:"Remada baixa (cabo)", group:"Costas"},
-  {name:"Remada unilateral halter (serrote)", group:"Costas"}, {name:"Remada cavalinho (T-bar)", group:"Costas"},
-  {name:"Barra fixa (pull-up)", group:"Costas"}, {name:"Levantamento terra", group:"Costas"},
-  {name:"Hiperextensão lombar", group:"Costas"}, {name:"Pulldown com corda", group:"Costas"},
+  {name:"Puxada frontal (pulley)", group:"Costas", pattern:"puxar_vertical", equipment:"cabo"},
+  {name:"Puxada supinada", group:"Costas", pattern:"puxar_vertical", equipment:"cabo"},
+  {name:"Remada curvada barra", group:"Costas", pattern:"puxar_horizontal", equipment:"barra"},
+  {name:"Remada baixa (cabo)", group:"Costas", pattern:"puxar_horizontal", equipment:"cabo"},
+  {name:"Remada unilateral halter (serrote)", group:"Costas", pattern:"puxar_horizontal", equipment:"halteres"},
+  {name:"Remada cavalinho (T-bar)", group:"Costas", pattern:"puxar_horizontal", equipment:"barra"},
+  {name:"Barra fixa (pull-up)", group:"Costas", pattern:"puxar_vertical", equipment:"peso_corporal"},
+  {name:"Levantamento terra", group:"Costas", pattern:"dobradica_quadril", equipment:"barra"},
+  {name:"Hiperextensão lombar", group:"Costas", pattern:"dobradica_quadril", equipment:"peso_corporal"},
+  {name:"Pulldown com corda", group:"Costas", pattern:"puxar_vertical", equipment:"cabo"},
   // Pernas
-  {name:"Agachamento livre", group:"Pernas"}, {name:"Agachamento smith", group:"Pernas"},
-  {name:"Leg press 45°", group:"Pernas"}, {name:"Cadeira extensora", group:"Pernas"},
-  {name:"Cadeira flexora", group:"Pernas"}, {name:"Mesa flexora", group:"Pernas"},
-  {name:"Agachamento búlgaro", group:"Pernas"}, {name:"Avanço (afundo)", group:"Pernas"},
-  {name:"Stiff barra", group:"Pernas"}, {name:"Stiff halteres", group:"Pernas"},
-  {name:"Hack machine", group:"Pernas"}, {name:"Cadeira adutora", group:"Pernas"},
-  {name:"Cadeira abdutora", group:"Pernas"},
+  {name:"Agachamento livre", group:"Pernas", pattern:"agachamento", equipment:"barra"},
+  {name:"Agachamento smith", group:"Pernas", pattern:"agachamento", equipment:"maquina"},
+  {name:"Leg press 45°", group:"Pernas", pattern:"agachamento", equipment:"maquina"},
+  {name:"Hack machine", group:"Pernas", pattern:"agachamento", equipment:"maquina"},
+  {name:"Cadeira extensora", group:"Pernas", pattern:"isolamento_quadriceps", equipment:"maquina"},
+  {name:"Cadeira flexora", group:"Pernas", pattern:"isolamento_posterior", equipment:"maquina"},
+  {name:"Mesa flexora", group:"Pernas", pattern:"isolamento_posterior", equipment:"maquina"},
+  {name:"Agachamento búlgaro", group:"Pernas", pattern:"agachamento_unilateral", equipment:"halteres"},
+  {name:"Avanço (afundo)", group:"Pernas", pattern:"agachamento_unilateral", equipment:"halteres"},
+  {name:"Stiff barra", group:"Pernas", pattern:"dobradica_quadril", equipment:"barra"},
+  {name:"Stiff halteres", group:"Pernas", pattern:"dobradica_quadril", equipment:"halteres"},
+  {name:"Cadeira adutora", group:"Pernas", pattern:"isolamento_adutor", equipment:"maquina"},
+  {name:"Cadeira abdutora", group:"Pernas", pattern:"isolamento_abdutor", equipment:"maquina"},
   // Ombro
-  {name:"Desenvolvimento militar barra", group:"Ombro"}, {name:"Desenvolvimento halteres", group:"Ombro"},
-  {name:"Desenvolvimento máquina", group:"Ombro"}, {name:"Elevação lateral halteres", group:"Ombro"},
-  {name:"Elevação frontal halteres", group:"Ombro"}, {name:"Elevação lateral cabo", group:"Ombro"},
-  {name:"Crucifixo invertido (posterior)", group:"Ombro"}, {name:"Remada alta barra", group:"Ombro"},
-  {name:"Encolhimento de ombros (trapézio)", group:"Ombro"},
+  {name:"Desenvolvimento militar barra", group:"Ombro", pattern:"empurrar_vertical", equipment:"barra"},
+  {name:"Desenvolvimento halteres", group:"Ombro", pattern:"empurrar_vertical", equipment:"halteres"},
+  {name:"Desenvolvimento máquina", group:"Ombro", pattern:"empurrar_vertical", equipment:"maquina"},
+  {name:"Elevação lateral halteres", group:"Ombro", pattern:"isolamento_ombro", equipment:"halteres"},
+  {name:"Elevação frontal halteres", group:"Ombro", pattern:"isolamento_ombro", equipment:"halteres"},
+  {name:"Elevação lateral cabo", group:"Ombro", pattern:"isolamento_ombro", equipment:"cabo"},
+  {name:"Crucifixo invertido (posterior)", group:"Ombro", pattern:"isolamento_ombro", equipment:"halteres"},
+  {name:"Remada alta barra", group:"Ombro", pattern:"puxar_vertical", equipment:"barra"},
+  {name:"Encolhimento de ombros (trapézio)", group:"Ombro", pattern:"isolamento_ombro", equipment:"halteres"},
   // Bíceps
-  {name:"Rosca direta barra", group:"Bíceps"}, {name:"Rosca direta halteres", group:"Bíceps"},
-  {name:"Rosca alternada halteres", group:"Bíceps"}, {name:"Rosca martelo", group:"Bíceps"},
-  {name:"Rosca scott", group:"Bíceps"}, {name:"Rosca concentrada", group:"Bíceps"},
-  {name:"Rosca cabo (polia baixa)", group:"Bíceps"},
+  {name:"Rosca direta barra", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"barra"},
+  {name:"Rosca direta halteres", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"halteres"},
+  {name:"Rosca alternada halteres", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"halteres"},
+  {name:"Rosca martelo", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"halteres"},
+  {name:"Rosca scott", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"maquina"},
+  {name:"Rosca concentrada", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"halteres"},
+  {name:"Rosca cabo (polia baixa)", group:"Bíceps", pattern:"flexao_cotovelo", equipment:"cabo"},
   // Tríceps
-  {name:"Tríceps corda (polia)", group:"Tríceps"}, {name:"Tríceps barra (polia)", group:"Tríceps"},
-  {name:"Tríceps testa barra", group:"Tríceps"}, {name:"Tríceps francês halter", group:"Tríceps"},
-  {name:"Tríceps coice (kickback)", group:"Tríceps"}, {name:"Mergulho (dips) no banco", group:"Tríceps"},
-  {name:"Supino fechado (pegada fechada)", group:"Tríceps"},
+  {name:"Tríceps corda (polia)", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"cabo"},
+  {name:"Tríceps barra (polia)", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"cabo"},
+  {name:"Tríceps testa barra", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"barra"},
+  {name:"Tríceps francês halter", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"halteres"},
+  {name:"Tríceps coice (kickback)", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"halteres"},
+  {name:"Mergulho (dips) no banco", group:"Tríceps", pattern:"extensao_cotovelo", equipment:"peso_corporal"},
+  {name:"Supino fechado (pegada fechada)", group:"Tríceps", pattern:"empurrar_horizontal", equipment:"barra"},
   // Abdômen
-  {name:"Abdominal supra", group:"Abdômen"}, {name:"Abdominal infra", group:"Abdômen"},
-  {name:"Prancha isométrica", group:"Abdômen"}, {name:"Prancha lateral", group:"Abdômen"},
-  {name:"Elevação de pernas", group:"Abdômen"}, {name:"Abdominal na polia (crunch cabo)", group:"Abdômen"},
-  {name:"Abdominal bicicleta", group:"Abdômen"}, {name:"Rotação de tronco (russian twist)", group:"Abdômen"},
+  {name:"Abdominal supra", group:"Abdômen", pattern:"flexao_tronco", equipment:"peso_corporal"},
+  {name:"Abdominal infra", group:"Abdômen", pattern:"flexao_tronco", equipment:"peso_corporal"},
+  {name:"Prancha isométrica", group:"Abdômen", pattern:"anti_extensao", equipment:"peso_corporal"},
+  {name:"Prancha lateral", group:"Abdômen", pattern:"anti_extensao", equipment:"peso_corporal"},
+  {name:"Elevação de pernas", group:"Abdômen", pattern:"flexao_tronco", equipment:"peso_corporal"},
+  {name:"Abdominal na polia (crunch cabo)", group:"Abdômen", pattern:"flexao_tronco", equipment:"cabo"},
+  {name:"Abdominal bicicleta", group:"Abdômen", pattern:"flexao_tronco", equipment:"peso_corporal"},
+  {name:"Rotação de tronco (russian twist)", group:"Abdômen", pattern:"rotacao_tronco", equipment:"peso_corporal"},
   // Glúteos
-  {name:"Elevação de quadril (hip thrust)", group:"Glúteos"}, {name:"Glúteo na polia (coice)", group:"Glúteos"},
-  {name:"Cadeira glúteo (glute machine)", group:"Glúteos"}, {name:"Abdução de quadril", group:"Glúteos"},
-  {name:"Ponte de glúteo", group:"Glúteos"},
+  {name:"Elevação de quadril (hip thrust)", group:"Glúteos", pattern:"dobradica_quadril", equipment:"barra"},
+  {name:"Glúteo na polia (coice)", group:"Glúteos", pattern:"isolamento_gluteo", equipment:"cabo"},
+  {name:"Cadeira glúteo (glute machine)", group:"Glúteos", pattern:"isolamento_gluteo", equipment:"maquina"},
+  {name:"Abdução de quadril", group:"Glúteos", pattern:"isolamento_abdutor", equipment:"maquina"},
+  {name:"Ponte de glúteo", group:"Glúteos", pattern:"dobradica_quadril", equipment:"peso_corporal"},
   // Panturrilha
-  {name:"Panturrilha em pé", group:"Panturrilha"}, {name:"Panturrilha sentado", group:"Panturrilha"},
-  {name:"Panturrilha no leg press", group:"Panturrilha"},
+  {name:"Panturrilha em pé", group:"Panturrilha", pattern:"isolamento_panturrilha", equipment:"maquina"},
+  {name:"Panturrilha sentado", group:"Panturrilha", pattern:"isolamento_panturrilha", equipment:"maquina"},
+  {name:"Panturrilha no leg press", group:"Panturrilha", pattern:"isolamento_panturrilha", equipment:"maquina"},
   // Cardio
-  {name:"Esteira (corrida)", group:"Cardio"}, {name:"Esteira (caminhada inclinada)", group:"Cardio"},
-  {name:"Bicicleta ergométrica", group:"Cardio"}, {name:"Elíptico", group:"Cardio"},
-  {name:"Escada (stairmaster)", group:"Cardio"}, {name:"Pular corda", group:"Cardio"},
-  {name:"Remo (remada cardio)", group:"Cardio"},
+  {name:"Esteira (corrida)", group:"Cardio", pattern:"cardio", equipment:"maquina"},
+  {name:"Esteira (caminhada inclinada)", group:"Cardio", pattern:"cardio", equipment:"maquina"},
+  {name:"Bicicleta ergométrica", group:"Cardio", pattern:"cardio", equipment:"maquina"},
+  {name:"Elíptico", group:"Cardio", pattern:"cardio", equipment:"maquina"},
+  {name:"Escada (stairmaster)", group:"Cardio", pattern:"cardio", equipment:"maquina"},
+  {name:"Pular corda", group:"Cardio", pattern:"cardio", equipment:"peso_corporal"},
+  {name:"Remo (remada cardio)", group:"Cardio", pattern:"cardio", equipment:"maquina"},
 ];
+
+const EQUIPMENT_LABELS = { barra:"Barra", halteres:"Halteres", maquina:"Máquina", cabo:"Cabo/Polia", peso_corporal:"Peso corporal" };
+
 
 
 // IMPORTANT: uses LOCAL date components, not toISOString() (which is UTC).
@@ -1741,6 +1780,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
   const [renamingTreino, setRenamingTreino] = useState(null);
   const [pendingStart, setPendingStart] = useState(null); // treino awaiting the progression-suggestion prompt
   const [finishedEntry, setFinishedEntry] = useState(null); // just-completed workout, for the share card
+  const [substitutingInFicha, setSubstitutingInFicha] = useState(null); // {treinoId, ex}
 
   const ficha = fichas.find(f=>f.id===activeFichaId) || fichas[0];
 
@@ -1800,6 +1840,13 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
       return {...t, exercises:[...t.exercises, {...orig, id:uid()}]};
     })}));
   }
+  function substituteExerciseInFicha(treinoId, exId, newEx){
+    setFichas(prev=>prev.map(f=>f.id!==ficha.id?f:{...f,treinos:f.treinos.map(t=>{
+      if(t.id!==treinoId) return t;
+      return {...t, exercises:t.exercises.map(e=> e.id!==exId ? e : {...e, name:newEx.name, group:newEx.group})};
+    })}));
+    setSubstitutingInFicha(null);
+  }
 
   function suggestionFor(exName){
     const lastSession = [...history].filter(h=>h.exercises.some(e=>e.name===exName)).sort((a,b)=>b.date.localeCompare(a.date))[0];
@@ -1834,7 +1881,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
 
   if(activeSession){
     return <WorkoutSession session={activeSession} setSession={setActiveSession} history={history} setHistory={setHistory}
-      restTimer={restTimer} setRestTimer={setRestTimer} celebrate={celebrate} onFinish={setFinishedEntry}/>;
+      restTimer={restTimer} setRestTimer={setRestTimer} celebrate={celebrate} onFinish={setFinishedEntry} setFichas={setFichas}/>;
   }
 
   if(!ficha){
@@ -1908,6 +1955,7 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
                   <span className="badge badge-muted" style={{minWidth:70,textAlign:"center"}}>{ex.group}</span>
                   <span style={{flex:1,fontSize:13}}>{ex.name}</span>
                   <span style={{fontSize:12,color:"var(--text-dim)"}}>{ex.sets}x{ex.reps}{ex.load ? ` · ${ex.load}kg` : ""}</span>
+                  <button className="iconbtn" title="Substituir exercício" onClick={()=>setSubstitutingInFicha({treinoId:treino.id, ex})}><RefreshCw size={13}/></button>
                   <button className="iconbtn" title="Duplicar exercício" onClick={()=>duplicateExercise(treino.id, ex.id)}><Copy size={13}/></button>
                   <button className="iconbtn" title="Excluir" onClick={()=>deleteExercise(treino.id, ex.id)}><X size={13}/></button>
                 </div>
@@ -1955,6 +2003,13 @@ function WorkoutTab({ fichas, setFichas, history, setHistory, activeSession, set
         </Modal>
       )}
       {finishedEntry && <WorkoutShareCard entry={finishedEntry} patientName={profile.name} onClose={()=>setFinishedEntry(null)}/>}
+      {substitutingInFicha && (
+        <SubstituteExercisePicker
+          currentExercise={substitutingInFicha.ex}
+          onPick={(newEx)=>substituteExerciseInFicha(substitutingInFicha.treinoId, substitutingInFicha.ex.id, newEx)}
+          onClose={()=>setSubstitutingInFicha(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2237,6 +2292,64 @@ function PromptModal({ title, placeholder, onSave, onClose }){
   );
 }
 
+function SubstituteExercisePicker({ currentExercise, onPick, onClose }){
+  const [q, setQ] = useState("");
+  const [equipFilter, setEquipFilter] = useState("Todos");
+
+  // try to find the current exercise's metadata in the library (custom/typed
+  // exercises won't have it — substitution still works, just without the
+  // "Equivalente" highlighting)
+  const currentMeta = EXERCISE_LIBRARY.find(e=> e.name.toLowerCase() === (currentExercise.name||"").toLowerCase());
+  const sameGroup = EXERCISE_LIBRARY.filter(e =>
+    e.group === currentExercise.group && e.name !== currentExercise.name
+  );
+
+  const equipments = Array.from(new Set(sameGroup.map(e=>e.equipment))).filter(Boolean);
+
+  const filtered = sameGroup
+    .filter(e => e.name.toLowerCase().includes(q.toLowerCase()))
+    .filter(e => equipFilter==="Todos" || e.equipment===equipFilter)
+    .sort((a,b)=>{
+      const aEquiv = currentMeta && a.pattern===currentMeta.pattern ? 0 : 1;
+      const bEquiv = currentMeta && b.pattern===currentMeta.pattern ? 0 : 1;
+      return aEquiv - bEquiv;
+    });
+
+  return (
+    <Modal title={`Substituir "${currentExercise.name}"`} onClose={onClose} wide>
+      <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:12}}>
+        Mostrando opções do mesmo grupo muscular ({currentExercise.group}){currentMeta ? ", com o padrão de movimento equivalente destacado primeiro" : ""}.
+      </div>
+      <div className="field" style={{position:"relative"}}>
+        <Search size={15} style={{position:"absolute",left:12,top:12,color:"var(--text-faint)"}}/>
+        <input className="input" style={{paddingLeft:34}} autoFocus placeholder="Buscar exercício substituto..."
+          value={q} onChange={e=>setQ(e.target.value)}/>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        <button className={"chip"+(equipFilter==="Todos"?" active":"")} onClick={()=>setEquipFilter("Todos")}>Todos</button>
+        {equipments.map(eq=>(
+          <button key={eq} className={"chip"+(equipFilter===eq?" active":"")} onClick={()=>setEquipFilter(eq)}>{EQUIPMENT_LABELS[eq]||eq}</button>
+        ))}
+      </div>
+      <div style={{maxHeight:340,overflowY:"auto"}}>
+        {filtered.map((e,i)=>{
+          const isEquivalent = currentMeta && e.pattern===currentMeta.pattern;
+          return (
+            <div className="food-search-item" key={i} onClick={()=>onPick(e)}>
+              <div style={{fontSize:13.5,fontWeight:600}}>{e.name}</div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {isEquivalent && <span className="badge badge-accent">Equivalente</span>}
+                <span className="badge badge-muted">{EQUIPMENT_LABELS[e.equipment]||e.equipment}</span>
+              </div>
+            </div>
+          );
+        })}
+        {!filtered.length && <div className="empty">Nenhum outro exercício desse grupo encontrado.</div>}
+      </div>
+    </Modal>
+  );
+}
+
 function ExercisePicker({ onPick, onClose }){
   const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("Todos");
@@ -2308,13 +2421,34 @@ function ExerciseForm({ onSave, onClose }){
   );
 }
 
-function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate, onFinish }){
+function WorkoutSession({ session, setSession, history, setHistory, restTimer, setRestTimer, celebrate, onFinish, setFichas }){
   const elapsedMin = Math.round((Date.now()-session.startedAt)/60000);
+  const [substitutingIdx, setSubstitutingIdx] = useState(null);
+  const [pendingSubstitute, setPendingSubstitute] = useState(null); // {exIdx, newEx}
 
   function bestEverWeight(exName){
     let best = 0;
     history.forEach(h=> h.exercises.forEach(e=>{ if(e.name===exName) e.sets.forEach(s=>{ if(s.weight>best) best=s.weight; }); }));
     return best;
+  }
+
+  function applySubstitute(exIdx, newEx, permanent){
+    setSession(prev=>{
+      const log = prev.log.map((l,i)=> i!==exIdx ? l : { ...l, exName:newEx.name, sets: l.sets.map(s=>({...s, done:false})) });
+      const treino = { ...prev.treino, exercises: prev.treino.exercises.map((e,i)=> i!==exIdx ? e : {...e, name:newEx.name, group:newEx.group}) };
+      return {...prev, log, treino};
+    });
+    if(permanent && setFichas){
+      const treinoId = session.treino.id;
+      setFichas(prevFichas => prevFichas.map(f=> ({
+        ...f,
+        treinos: f.treinos.map(t=> t.id!==treinoId ? t : {
+          ...t,
+          exercises: t.exercises.map((e,i)=> i===exIdx ? {...e, name:newEx.name, group:newEx.group} : e)
+        })
+      })));
+    }
+    setPendingSubstitute(null);
   }
 
   function toggleSet(exIdx, setIdx){
@@ -2378,9 +2512,10 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
         const exDef = session.treino.exercises[exIdx];
         return (
           <div className="exercise-card" key={l.exId}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontWeight:700,fontSize:14.5}}>{l.exName}</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,gap:8}}>
+              <div style={{fontWeight:700,fontSize:14.5,flex:1}}>{l.exName}</div>
               <span className="badge badge-muted">Meta: {exDef.sets}x{exDef.reps}{exDef.load ? ` · ${exDef.load}kg` : ""}</span>
+              <button className="iconbtn" title="Substituir exercício" onClick={()=>setSubstitutingIdx(exIdx)}><RefreshCw size={14}/></button>
             </div>
             <div className="set-row" style={{color:"var(--text-faint)",fontSize:11}}>
               <span>Série</span><span>Peso (kg)</span><span>Reps</span><span></span><span></span>
@@ -2398,6 +2533,28 @@ function WorkoutSession({ session, setSession, history, setHistory, restTimer, s
           </div>
         );
       })}
+
+      {substitutingIdx !== null && (
+        <SubstituteExercisePicker
+          currentExercise={session.treino.exercises[substitutingIdx]}
+          onPick={(newEx)=>{ setPendingSubstitute({exIdx:substitutingIdx, newEx}); setSubstitutingIdx(null); }}
+          onClose={()=>setSubstitutingIdx(null)}
+        />
+      )}
+
+      {pendingSubstitute && (
+        <Modal title="Aplicar substituição" onClose={()=>setPendingSubstitute(null)}>
+          <div style={{fontSize:13,color:"var(--text-dim)",marginBottom:18}}>
+            Trocar <b>{session.treino.exercises[pendingSubstitute.exIdx].name}</b> por <b>{pendingSubstitute.newEx.name}</b>:
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <button className="btn btn-primary" style={{justifyContent:"center"}} onClick={()=>applySubstitute(pendingSubstitute.exIdx, pendingSubstitute.newEx, false)}>Só neste treino de hoje</button>
+            {setFichas && (
+              <button className="btn btn-ghost" style={{justifyContent:"center"}} onClick={()=>applySubstitute(pendingSubstitute.exIdx, pendingSubstitute.newEx, true)}>Também na ficha (definitivo)</button>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
