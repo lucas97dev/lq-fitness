@@ -3309,13 +3309,14 @@ function AdminTab({ user }){
   async function openPatient(p){
     setSelected(p);
     setLoadingPatient(true);
-    const [bodyRow, historyRow, dietRow, fichasRow, diaryDays, noteRow] = await Promise.all([
+    const [bodyRow, historyRow, dietRow, fichasRow, diaryDays, noteRow, photos] = await Promise.all([
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","body-measurements").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","workout-history").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","diet-plan").maybeSingle(),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","fichas").maybeSingle(),
       loadDiaryHistory(p.id),
       supabase.from("user_data").select("value").eq("user_id", p.id).eq("key","admin-note").maybeSingle(),
+      loadEvolutionPhotos(p.id),
     ]);
     setPatientData({
       bodyData: bodyRow.data?.value || [],
@@ -3324,6 +3325,7 @@ function AdminTab({ user }){
       fichas: fichasRow.data?.value || [],
       diaryDays: diaryDays || [],
       adminNote: noteRow.data?.value || null,
+      photos: photos || [],
     });
     setLoadingPatient(false);
   }
@@ -3392,7 +3394,7 @@ function AdminTab({ user }){
 
 function AdminPatientDetail({ patient, data, setDietPlan, setFichas, setAdminNote }){
   const [tab, setTab] = useState("evolucao"); // evolucao | dieta | treino | recado
-  const { bodyData, history, dietPlan, fichas, diaryDays, adminNote } = data;
+  const { bodyData, history, dietPlan, fichas, diaryDays, adminNote, photos } = data;
   const [foods] = useState(FOOD_DB_SEED);
 
   const latest = bodyData[bodyData.length-1];
@@ -3561,7 +3563,7 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas, setAdminNot
             )) : <div className="empty">Nenhum recorde registrado ainda</div>}
           </div>
 
-          <div className="card">
+          <div className="card" style={{marginBottom:16}}>
             <div className="card-title">Últimos treinos</div>
             {recentWorkouts.map(w=>(
               <div className="list-row" key={w.id}>
@@ -3574,6 +3576,53 @@ function AdminPatientDetail({ patient, data, setDietPlan, setFichas, setAdminNot
               </div>
             ))}
             {!recentWorkouts.length && <div className="empty">Nenhum treino registrado ainda</div>}
+          </div>
+
+          <div className="card" style={{marginBottom:16}}>
+            <div className="card-title">Alimentação recente <span className="badge badge-muted">últimos 7 dias registrados</span></div>
+            {(!diaryDays || !diaryDays.length) && <div className="empty">Nenhuma refeição lançada ainda</div>}
+            {(diaryDays||[]).slice(0,7).map(day=>{
+              const allItems = day.meals.flatMap(m=>m.items);
+              const dt = mealTotals(allItems);
+              const loggedMeals = day.meals.filter(m=>m.items.length>0);
+              return (
+                <div key={day.date} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid var(--border-soft)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                    <span style={{fontSize:13,fontWeight:600}}>{new Date(day.date+"T12:00").toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"})}</span>
+                    <span className="badge badge-muted">{Math.round(dt.kcal)} kcal · P{fmt1(dt.p)} C{fmt1(dt.c)} G{fmt1(dt.f)}</span>
+                  </div>
+                  {!loggedMeals.length && <div style={{fontSize:12,color:"var(--text-faint)"}}>Nenhuma refeição lançada nesse dia</div>}
+                  {loggedMeals.map(m=>(
+                    <div key={m.id} style={{fontSize:12,color:"var(--text-dim)"}}>
+                      {m.name}: {m.items.map(it=>{
+                        const food = foods.find(f=>f.id===it.foodId);
+                        return food ? food.name : null;
+                      }).filter(Boolean).join(", ")}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="card">
+            <div className="card-title">Fotos de evolução <span className="badge badge-muted">{(photos||[]).length}</span></div>
+            {!(photos||[]).length ? (
+              <div className="empty">O paciente ainda não enviou fotos de evolução</div>
+            ) : (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10}}>
+                {photos.map(p=>(
+                  <div key={p.id}>
+                    <div style={{aspectRatio:"3/4", borderRadius:10, overflow:"hidden", background:"var(--bg-elev)", border:"1px solid var(--border-soft)"}}>
+                      {p.url ? <img src={p.url} alt={p.date} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
+                    </div>
+                    <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:4,textAlign:"center"}}>
+                      {new Date(p.date+"T12:00").toLocaleDateString("pt-BR")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
