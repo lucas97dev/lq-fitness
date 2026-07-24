@@ -1280,20 +1280,63 @@ function DietTab({ foods, setFoods, diary, setDiary, today, todayMeals, macroTot
           <MealsList meals={dietPlan} setMeals={setDietPlan} foods={foods} setFoods={setFoods} mealTotals={mealTotals}/>
         </>
       ) : (
-        <DietHistoryView days={historyDays} foods={foods} mealTotals={mealTotals}/>
+        <DietHistoryView days={historyDays} setDays={setHistoryDays} foods={foods} setFoods={setFoods} mealTotals={mealTotals} userId={user.id} today={today}/>
       )}
     </div>
   );
 }
 
-function DietHistoryView({ days, foods, mealTotals }){
+function DietHistoryView({ days, setDays, foods, setFoods, mealTotals, userId, today }){
   const [openDate, setOpenDate] = useState(null);
+  const [pickDate, setPickDate] = useState("");
+  const yesterday = daysAgoISO(1);
+
+  function setMealsForDay(date, updater){
+    setDays(prevDays=>{
+      const exists = prevDays.some(d=>d.date===date);
+      const base = exists ? prevDays : [...prevDays, {date, meals:[]}];
+      return base.map(d=>{
+        if(d.date!==date) return d;
+        const newMeals = typeof updater==="function" ? updater(d.meals) : updater;
+        saveKey(userId, "diary:"+date, {meals:newMeals});
+        return {...d, meals:newMeals};
+      }).sort((a,b)=> b.date.localeCompare(a.date));
+    });
+  }
+
+  function openOrCreateDay(){
+    if(!pickDate || pickDate >= today) return;
+    const exists = days.find(d=>d.date===pickDate);
+    if(!exists){
+      const blankDay = { date:pickDate, meals:[
+        { id:uid(), name:"Café da manhã", items:[] },
+        { id:uid(), name:"Almoço", items:[] },
+        { id:uid(), name:"Lanche da tarde", items:[] },
+        { id:uid(), name:"Jantar", items:[] },
+      ]};
+      setDays(prev=>[...prev, blankDay].sort((a,b)=> b.date.localeCompare(a.date)));
+    }
+    setOpenDate(pickDate);
+    setPickDate("");
+  }
 
   if(days === null) return <div className="empty">Carregando histórico…</div>;
-  if(!days.length) return <div className="empty">Ainda não há dias anteriores registrados. Volte aqui depois de lançar refeições em outros dias.</div>;
 
   return (
     <div>
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Completar um dia esquecido</div>
+        <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:10}}>
+          Esqueceu de lançar algo num dia anterior? Escolha a data e complete normalmente.
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <input className="input" type="date" style={{maxWidth:200}} max={yesterday} value={pickDate} onChange={e=>setPickDate(e.target.value)}/>
+          <button className="btn btn-sm btn-primary" disabled={!pickDate} onClick={openOrCreateDay}>Abrir esse dia</button>
+        </div>
+      </div>
+
+      {!days.length && <div className="empty">Ainda não há dias anteriores registrados. Volte aqui depois de lançar refeições em outros dias, ou use o campo acima.</div>}
+
       {days.map(day=>{
         const allItems = day.meals.flatMap(m=>m.items);
         const t = mealTotals(allItems);
@@ -1310,30 +1353,12 @@ function DietHistoryView({ days, foods, mealTotals }){
               </div>
             </div>
             {isOpen && (
-              <div style={{marginTop:8}}>
-                {day.meals.map(meal=>{
-                  const mt = mealTotals(meal.items);
-                  return (
-                    <div key={meal.id} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid var(--border-soft)"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                        <span style={{fontSize:13,fontWeight:600}}>{meal.name}</span>
-                        <span style={{fontSize:11.5,color:"var(--text-faint)"}}>{Math.round(mt.kcal)} kcal</span>
-                      </div>
-                      {!meal.items.length && <div style={{fontSize:12,color:"var(--text-faint)"}}>Nenhum alimento lançado</div>}
-                      {meal.items.map(it=>{
-                        const food = foods.find(f=>f.id===it.foodId);
-                        if(!food) return null;
-                        const factor = it.qty/food.per;
-                        return (
-                          <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,color:"var(--text-dim)",padding:"3px 0"}}>
-                            <span>{food.name} · {it.qty}{food.unit==="g"||food.unit==="ml"?food.unit:` ${food.unit}`}</span>
-                            <span>{Math.round(food.kcal*factor)} kcal</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+              <div style={{marginTop:10}}>
+                <MealsList
+                  meals={day.meals}
+                  setMeals={(updater)=>setMealsForDay(day.date, updater)}
+                  foods={foods} setFoods={setFoods} mealTotals={mealTotals}
+                />
               </div>
             )}
           </div>
