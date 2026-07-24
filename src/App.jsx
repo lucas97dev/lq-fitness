@@ -500,6 +500,31 @@ async function savePatientData(patientUserId, key, value){
   }catch(e){ console.error("Erro ao salvar dado do paciente:", e); }
 }
 
+// Free, keyless nutrition lookup via Open Food Facts — values come back per 100g/100ml.
+async function searchOpenFoodFacts(query){
+  try{
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,brands,nutriments,quantity`;
+    const res = await fetch(url);
+    if(!res.ok) return [];
+    const data = await res.json();
+    return (data.products||[])
+      .filter(p => p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"]!=null)
+      .map(p => ({
+        name: p.product_name.trim(),
+        brand: (p.brands||"").split(",")[0].trim(),
+        per: 100, unit:"g",
+        kcal: Math.round(p.nutriments["energy-kcal_100g"]||0),
+        protein: fmt1(p.nutriments["proteins_100g"]||0),
+        carb: fmt1(p.nutriments["carbohydrates_100g"]||0),
+        fat: fmt1(p.nutriments["fat_100g"]||0),
+        fiber: fmt1(p.nutriments["fiber_100g"]||0),
+        sodium: Math.round((p.nutriments["sodium_100g"]||0)*1000),
+      }))
+      .filter((v,i,arr)=> arr.findIndex(x=>x.name===v.name && x.brand===v.brand)===i) // dedupe
+      .slice(0,12);
+  }catch(e){ console.error("Erro ao buscar alimento online:", e); return []; }
+}
+
 /* ---- Supabase profile row <-> app profile object mapping ---- */
 function dbRowToProfile(row){
   return {
@@ -1407,6 +1432,9 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
   const [showCustom, setShowCustom] = useState(false);
   const [editingFood, setEditingFood] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [onlineResults, setOnlineResults] = useState(null); // null = not searched yet
+  const [searchingOnline, setSearchingOnline] = useState(false);
+  const [reviewingOnlineFood, setReviewingOnlineFood] = useState(null);
   const filtered = foods.filter(f=> f.name.toLowerCase().includes(q.toLowerCase())).slice(0,40);
 
   function selectFood(f){ setSelected(f); setQty(f.per); }
@@ -1424,6 +1452,21 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
     }
   }
 
+  async function searchOnline(){
+    if(!q.trim()) return;
+    setSearchingOnline(true);
+    const results = await searchOpenFoodFacts(q.trim());
+    setOnlineResults(results);
+    setSearchingOnline(false);
+  }
+
+  function saveOnlineFood(reviewedFood){
+    const withId = {...reviewedFood, id:"custom-"+uid(), custom:true};
+    setFoods(prev=>[...prev, withId]);
+    setReviewingOnlineFood(null);
+    selectFood(withId);
+  }
+
   return (
     <Modal title="Adicionar alimento" onClose={onClose}>
       {!selected ? (
@@ -1431,7 +1474,8 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
           <div className="field" style={{position:"relative"}}>
             <Search size={15} style={{position:"absolute",left:12,top:12,color:"var(--text-faint)"}}/>
             <input className="input" style={{paddingLeft:34}} autoFocus placeholder="Buscar alimento (ex: arroz, frango...)"
-              value={q} onChange={e=>setQ(e.target.value)}/>
+              value={q} onChange={e=>{setQ(e.target.value); setOnlineResults(null);}}
+              onKeyDown={e=>e.key==="Enter" && !filtered.length && searchOnline()}/>
           </div>
           <div style={{maxHeight:320,overflowY:"auto"}}>
             {filtered.map(f=>(
@@ -1454,11 +1498,42 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
                 )}
               </div>
             ))}
-            {!filtered.length && <div className="empty">Nenhum alimento encontrado</div>}
+            {!filtered.length && !onlineResults && (
+              <div className="empty" style={{padding:"16px 20px"}}>
+                Nenhum alimento encontrado na sua lista.
+                {q.trim() && (
+                  <div style={{marginTop:10}}>
+                    <button className="btn btn-sm btn-primary" onClick={searchOnline} disabled={searchingOnline}>
+                      <Search size={13}/> {searchingOnline ? "Buscando..." : `Buscar "${q.trim()}" online`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {onlineResults && onlineResults.length>0 && (
+              <div style={{marginTop:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:"0.04em",padding:"6px 4px"}}>Resultados online</div>
+                {onlineResults.map((f,i)=>(
+                  <div className="food-search-item" key={i} onClick={()=>setReviewingOnlineFood(f)}>
+                    <div>
+                      <div style={{fontSize:13.5,fontWeight:600}}>{f.name}{f.brand?` · ${f.brand}`:""}</div>
+                      <div style={{fontSize:11.5,color:"var(--text-faint)"}}>{f.kcal} kcal / 100g · P{f.protein}g C{f.carb}g G{f.fat}g</div>
+                    </div>
+                    <span className="badge badge-blue">online</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {onlineResults && !onlineResults.length && (
+              <div className="empty">Não encontramos esse alimento online. Você pode criar manualmente abaixo.</div>
+            )}
           </div>
           <button className="btn btn-ghost btn-sm" style={{marginTop:10}} onClick={()=>setShowCustom(true)}><Plus size={13}/> Criar alimento personalizado</button>
           {showCustom && <CustomFoodForm onSave={(f)=>{setFoods(prev=>[...prev,f]); setShowCustom(false); selectFood(f);}} onClose={()=>setShowCustom(false)}/>}
           {editingFood && <CustomFoodForm initial={editingFood} onSave={saveEditedFood} onClose={()=>setEditingFood(null)}/>}
+          {reviewingOnlineFood && (
+            <CustomFoodForm initial={reviewingOnlineFood} title="Revisar alimento (dados online)" onSave={saveOnlineFood} onClose={()=>setReviewingOnlineFood(null)}/>
+          )}
         </>
       ) : (
         <div>
@@ -1488,11 +1563,11 @@ function FoodPicker({ foods, setFoods, onPick, onClose }){
   );
 }
 
-function CustomFoodForm({ onSave, onClose, initial }){
+function CustomFoodForm({ onSave, onClose, initial, title }){
   const [f, setF] = useState(initial || {name:"",brand:"",per:100,unit:"g",kcal:0,protein:0,carb:0,fat:0,fiber:0,sodium:0});
   const isEditing = !!initial;
   return (
-    <Modal title={isEditing ? "Editar alimento" : "Alimento personalizado"} onClose={onClose}>
+    <Modal title={title || (isEditing ? "Editar alimento" : "Alimento personalizado")} onClose={onClose}>
       <div className="field"><label className="flabel">Nome</label><input className="input" value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
       <div className="grid grid-2" style={{marginBottom:14}}>
         <div><label className="flabel">Base</label><input className="input" type="number" value={numDisplay(f.per)} onChange={e=>setF({...f,per:Number(e.target.value)})}/></div>
