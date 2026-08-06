@@ -11,7 +11,7 @@ import { supabase } from "../supabaseClient.js";
 import { todayISO, daysAgoISO, fmt1, numDisplay, uid, calcBMI, calcJP7, calcJP3, calcLeanMass, sideAvg, wrapText, getWeekLabel } from "../lib/helpers.js";
 import { FOOD_DB_SEED, MUSCLE_GROUPS, EXERCISE_LIBRARY, EQUIPMENT_LABELS, NAV, WEEKDAYS } from "../lib/constants.js";
 import { loadKey, saveKey, deleteAllUserData, deleteKey, loadDiaryHistory, savePatientData, searchOpenFoodFacts, dbRowToProfile, profileToDbRow, loadProfileFromSupabase, saveProfileToSupabase, PHOTOS_BUCKET, uploadEvolutionPhoto, loadEvolutionPhotos, deleteEvolutionPhoto } from "../lib/api.js";
-import { ProgressBar, Ring, VitalRings, Modal, CelebrationModal, ErrorBoundary, PromptModal, NumField } from "../components/UI.jsx";
+import { ProgressBar, Ring, VitalRings, Modal, CelebrationModal, ErrorBoundary, NumField } from "../components/UI.jsx";
 
 export function WeeklyScheduleCard({ fichas, schedule, setSchedule }){
   const allTreinos = fichas.flatMap(f => f.treinos.map(t => ({ id:t.id, label:`${t.name} · ${f.name}` })));
