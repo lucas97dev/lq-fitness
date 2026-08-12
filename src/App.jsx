@@ -62,7 +62,7 @@ export default function FitnessApp({ user }){
 
   useEffect(()=>{
     (async ()=>{
-      const [f,d,w,fi,h,b,g,sc,dp,an] = await Promise.all([
+      const [f,d,w,fi,h,b,g,sc,dp,an,as] = await Promise.all([
         loadKey(user.id, "foods-custom", []),
         loadKey(user.id, "diary:"+today, null),
         loadKey(user.id, "water-log", {}),
@@ -73,6 +73,7 @@ export default function FitnessApp({ user }){
         loadKey(user.id, "schedule", {}),
         loadKey(user.id, "diet-plan", null),
         loadKey(user.id, "admin-note", null),
+        loadKey(user.id, "active-session", null),
       ]);
 
       let p = await loadProfileFromSupabase(user.id);
@@ -96,6 +97,13 @@ export default function FitnessApp({ user }){
       setSchedule(sc||{});
       setDietPlan(dp||[]);
       setAdminNote(an||null);
+      // resume an in-progress workout if the app was closed mid-session — but
+      // don't silently resume something abandoned many hours ago
+      if(as && as.startedAt && (Date.now()-as.startedAt) < 12*60*60*1000){
+        setActiveSession(as);
+      } else if(as){
+        deleteKey(user.id, "active-session");
+      }
 
       const { data: adminRow } = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
       setIsAdmin(!!adminRow);
@@ -122,6 +130,11 @@ export default function FitnessApp({ user }){
   useEffect(()=>{ if(loaded) saveKey(user.id, "water-log", water); },[water, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "fichas", fichas); },[fichas, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "schedule", schedule); },[schedule, loaded]);
+  useEffect(()=>{
+    if(!loaded) return;
+    if(activeSession) saveKey(user.id, "active-session", activeSession);
+    else deleteKey(user.id, "active-session");
+  },[activeSession, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "diet-plan", dietPlan); },[dietPlan, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "workout-history", history); },[history, loaded]);
   useEffect(()=>{ if(loaded) saveKey(user.id, "body-measurements", bodyData); },[bodyData, loaded]);
@@ -208,6 +221,7 @@ export default function FitnessApp({ user }){
     setGoals([]);
     setSchedule({});
     setDietPlan([]);
+    setActiveSession(null);
   }
 
   function updateFood(items, mealId, itemId, newQty){
