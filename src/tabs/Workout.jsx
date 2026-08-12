@@ -543,16 +543,6 @@ export function EditSessionModal({ session, onSave, onClose }){
   );
 }
 
-function PromptModal({ title, placeholder, onSave, onClose }){
-  const [val, setVal] = useState("");
-  return (
-    <Modal title={title} onClose={onClose}>
-      <div className="field"><input className="input" autoFocus placeholder={placeholder} value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&val.trim()&&onSave(val.trim())}/></div>
-      <button className="btn btn-primary" style={{width:"100%",justifyContent:"center"}} onClick={()=>val.trim()&&onSave(val.trim())}>Salvar</button>
-    </Modal>
-  );
-}
-
 export function SubstituteExercisePicker({ currentExercise, onPick, onClose }){
   const [q, setQ] = useState("");
   const [equipFilter, setEquipFilter] = useState("Todos");
